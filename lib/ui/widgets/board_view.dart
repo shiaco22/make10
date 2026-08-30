@@ -31,6 +31,12 @@ class BoardView extends StatelessWidget {
           children: [
             for (final card in cards)
               CardTile(
+                // マージのたびに 2 枚が消えて 1 枚増えるため、生存カードは
+                // 前方のインデックスへ詰まる。id で key を付けないと
+                // Flutter が位置で要素を再利用し、以前そこにあった別カード
+                // の AnimatedContainer アニメーション状態を引き継いでしまう
+                // (本来アニメーションしないはずの場面で色がフェードする)。
+                key: ValueKey(card.id),
                 card: card,
                 selected: card.id == selectedId,
                 highlighted: highlightedIds.contains(card.id),

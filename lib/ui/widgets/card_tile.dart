@@ -36,9 +36,27 @@ class CardTile extends StatelessWidget {
       foreground = scheme.onSurface;
     }
 
+    final Color borderColor;
+    if (selected && highlighted) {
+      // 塗りは primary (選択中が優先) だが、Material 3 では primary と
+      // tertiary はトーンが近くほぼ無彩色差になり得るため、実際に塗られる
+      // primary に対して確実にコントラストが取れる onPrimary を使う。
+      borderColor = scheme.onPrimary;
+    } else if (highlighted) {
+      borderColor = scheme.tertiary;
+    } else {
+      borderColor = Colors.transparent;
+    }
+
     return Semantics(
       button: true,
       label: 'カード ${card.value}',
+      // 付けないと内側の Text が生成する暗黙のラベルがマージされ、
+      // 読み上げが「カード 9\n9」のように重複してしまう。
+      excludeSemantics: true,
+      // 上記で子孫の Semantics (InkWell 内のタップ操作を含む) を遮断する
+      // ため、タップ操作はここで明示的に再提供する。
+      onTap: onTap,
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(16),
@@ -50,7 +68,7 @@ class CardTile extends StatelessWidget {
             color: background,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: highlighted ? scheme.tertiary : Colors.transparent,
+              color: borderColor,
               width: 3,
             ),
           ),

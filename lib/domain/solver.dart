@@ -105,3 +105,85 @@ List<Solution> solve(List<int> values) {
   search([for (final v in values) _Node.leaf(v)]);
   return found.values.toList();
 }
+
+/// ソルバーが返す手。カードを「渡されたリスト内の位置」で指す。
+///
+/// 値ではなく位置で指すため、同じ値のカードが複数あっても
+/// 強調表示すべきカードが一意に定まる。
+class SolverMove {
+  final int leftIndex;
+  final int rightIndex;
+  final Op op;
+  final int result;
+
+  const SolverMove(this.leftIndex, this.rightIndex, this.op, this.result);
+}
+
+/// [values] から 10 に到達できるかを返す。
+///
+/// 到達可能性の判定だけなので、多重集合をキーにしたメモ化は安全。
+/// ただし本数は数えないこと（それが必要なら solve を使う）。
+bool _reachable(List<int> values, Map<String, bool> memo) {
+  if (values.length == 1) return values.single == kTarget;
+
+  final key = (List.of(values)..sort()).join(',');
+  final cached = memo[key];
+  if (cached != null) return cached;
+
+  var result = false;
+  outer:
+  for (var i = 0; i < values.length; i++) {
+    for (var j = 0; j < values.length; j++) {
+      if (i == j) continue;
+      for (final op in Op.values) {
+        final value = applyOp(values[i], values[j], op);
+        if (value == null) continue;
+        final rest = <int>[
+          for (var k = 0; k < values.length; k++)
+            if (k != i && k != j) values[k],
+          value,
+        ];
+        if (_reachable(rest, memo)) {
+          result = true;
+          break outer;
+        }
+      }
+    }
+  }
+  memo[key] = result;
+  return result;
+}
+
+/// 10 に到達可能な次の一手を 1 つ返す。到達不能なら null。
+///
+/// 探索順は leftIndex 昇順 → rightIndex 昇順 → Op.values の順で固定し、
+/// 同じ盤面には常に同じ手を返す。
+/// 返す位置は呼び出し元が渡した [values] の並びを指す（内部でソートしない）。
+SolverMove? hint(List<int> values) {
+  if (values.length < 2) return null;
+  final memo = <String, bool>{};
+  for (var i = 0; i < values.length; i++) {
+    for (var j = 0; j < values.length; j++) {
+      if (i == j) continue;
+      for (final op in Op.values) {
+        final value = applyOp(values[i], values[j], op);
+        if (value == null) continue;
+        final rest = <int>[
+          for (var k = 0; k < values.length; k++)
+            if (k != i && k != j) values[k],
+          value,
+        ];
+        if (_reachable(rest, memo)) {
+          return SolverMove(i, j, op, value);
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/// この盤面から 10 に到達できないかを返す。
+///
+/// `hint(values) == null` とは同値ではない。1 枚だけ残って値が 10 の
+/// 盤面（クリア済み）では hint は null を返すが詰みではない。
+bool isDeadEnd(List<int> values) => !_reachable(values, <String, bool>{});

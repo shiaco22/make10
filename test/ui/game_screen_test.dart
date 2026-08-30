@@ -30,12 +30,49 @@ void main() {
     return session;
   }
 
+  /// [pumpGame], but first sets the test surface to [size] so the real
+  /// responsive layout (BoardView's LayoutBuilder, ActionBar's Wrap, etc.)
+  /// runs exactly as it would on a device of that size.
+  Future<GameSession> pumpGameAtSize(
+    WidgetTester tester,
+    List<int> digits,
+    Size size,
+  ) async {
+    tester.view.physicalSize = size;
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    return pumpGame(tester, digits);
+  }
+
   Future<void> tapCardWithValue(WidgetTester tester, int value) async {
     final tile = find.byWidgetPredicate(
       (w) => w is CardTile && w.card.value == value,
     );
     await tester.tap(tile.first);
     await tester.pump();
+  }
+
+  /// The on-screen rect of the [CardTile] for each value in [values], in
+  /// the same order. Reading the real render-box rect (rather than trusting
+  /// the layout math) is what would have caught the 320pt regression: the
+  /// pre-fix board wrapped the fourth card 57pt below its slot.
+  List<Rect> cardRectsFor(WidgetTester tester, List<int> values) {
+    return [
+      for (final value in values)
+        tester.getRect(find.byWidgetPredicate(
+          (w) => w is CardTile && w.card.value == value,
+        )),
+    ];
+  }
+
+  /// Whether the [TextButton] labelled [label] (as built by ActionBar's
+  /// `TextButton.icon`) currently has a live `onPressed`.
+  bool actionEnabled(WidgetTester tester, String label) {
+    final finder = find.widgetWithText(TextButton, label);
+    expect(finder, findsOneWidget,
+        reason: 'expected exactly one $label button');
+    return tester.widget<TextButton>(finder).onPressed != null;
   }
 
   testWidgets('shows four cards at the start', (tester) async {
@@ -128,4 +165,122 @@ void main() {
     await tapCardWithValue(tester, 3);
     expect(find.byType(CardTile), findsNWidgets(4));
   });
+
+  testWidgets(
+    'at 320x568 all four cards sit in one row and every one is tappable',
+    (tester) async {
+      final session =
+          await pumpGameAtSize(tester, [3, 4, 7, 9], const Size(320, 568));
+
+      final rects = cardRectsFor(tester, [3, 4, 7, 9]);
+      expect(rects, hasLength(4));
+
+      final tops = rects.map((r) => r.top).toList();
+      for (final top in tops.skip(1)) {
+        expect(
+          top,
+          closeTo(tops.first, 0.5),
+          reason: 'all four cards must sit on the same row at 320pt width',
+        );
+      }
+
+      expect(tester.takeException(), isNull);
+
+      // The regression this guards against: at 320pt the pre-fix layout
+      // wrapped to two rows, and the fourth card's on-screen position did
+      // not actually hit test -- tapping its centre silently missed and
+      // selectedCardId stayed null. tester.tap() taps the widget's real,
+      // painted centre, exactly like the reviewer's manual probe did.
+      final fourthCardId = session.board.cards[3].id;
+      await tester.tap(find.byWidgetPredicate(
+        (w) => w is CardTile && w.card.id == fourthCardId,
+      ));
+      await tester.pump();
+      expect(session.selectedCardId, fourthCardId);
+    },
+  );
+
+  testWidgets('at 375x667 all four cards sit in one row', (tester) async {
+    await pumpGameAtSize(tester, [3, 4, 7, 9], const Size(375, 667));
+
+    final rects = cardRectsFor(tester, [3, 4, 7, 9]);
+    expect(rects, hasLength(4));
+    final tops = rects.map((r) => r.top).toList();
+    for (final top in tops.skip(1)) {
+      expect(top, closeTo(tops.first, 0.5));
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'at a tablet width the cards stay capped at their max size and centred',
+    (tester) async {
+      const screenWidth = 834.0;
+      await pumpGameAtSize(
+          tester, [3, 4, 7, 9], const Size(screenWidth, 1112));
+
+      final rects = cardRectsFor(tester, [3, 4, 7, 9]);
+      expect(rects, hasLength(4));
+
+      for (final r in rects) {
+        expect(
+          r.width,
+          closeTo(88, 0.5),
+          reason: 'cards must reach, but not exceed, their 88-wide maximum '
+              'on a tablet-sized screen',
+        );
+        expect(r.height, closeTo(112, 0.5));
+      }
+
+      final rowLeft =
+          rects.map((r) => r.left).reduce((a, b) => a < b ? a : b);
+      final rowRight =
+          rects.map((r) => r.right).reduce((a, b) => a > b ? a : b);
+      final rowCenter = (rowLeft + rowRight) / 2;
+      expect(
+        rowCenter,
+        closeTo(screenWidth / 2, 1.0),
+        reason: 'the row of cards must stay horizontally centred',
+      );
+
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'after a clear, only next-puzzle is offered -- undo/reset/skip disabled',
+    (tester) async {
+      final session = await pumpGame(tester, [3, 4, 7, 9]);
+      while (!session.board.isFinished) {
+        final move = hint(session.board.values)!;
+        final left = session.board.cards[move.leftIndex];
+        final right = session.board.cards[move.rightIndex];
+        session.tapCard(left.id);
+        session.tapOp(move.op);
+        session.tapCard(right.id);
+        await tester.pump();
+      }
+      expect(session.phase, PhaseKind.cleared);
+
+      expect(actionEnabled(tester, '戻す'), isFalse);
+      expect(actionEnabled(tester, '最初から'), isFalse);
+      expect(actionEnabled(tester, 'スキップ'), isFalse);
+      expect(find.text('次の問題へ'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'after answer shown, only next-puzzle is offered -- undo/reset/skip '
+    'disabled',
+    (tester) async {
+      await pumpGame(tester, [3, 4, 7, 9]);
+      await tester.tap(find.text('答え'));
+      await tester.pump();
+
+      expect(actionEnabled(tester, '戻す'), isFalse);
+      expect(actionEnabled(tester, '最初から'), isFalse);
+      expect(actionEnabled(tester, 'スキップ'), isFalse);
+      expect(find.text('次の問題へ'), findsOneWidget);
+    },
+  );
 }

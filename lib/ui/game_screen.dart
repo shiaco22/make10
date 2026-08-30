@@ -73,6 +73,7 @@ class GameScreen extends StatelessWidget {
               const SizedBox(height: 12),
               ActionBar(
                 canUndo: session.board.canUndo,
+                interactionEnabled: session.phase == PhaseKind.playing,
                 assistEnabled: session.assistEnabled &&
                     session.phase == PhaseKind.playing,
                 onUndo: session.undo,

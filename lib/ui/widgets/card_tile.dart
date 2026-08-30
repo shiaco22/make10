@@ -3,11 +3,21 @@ import 'package:flutter/material.dart';
 import '../../domain/board.dart';
 
 /// 盤面の 1 枚。選択中とヒント強調で見た目を変える。
+///
+/// サイズは呼び出し側（[BoardView]）が利用可能な余白から計算して渡す。
+/// [baseWidth] × [baseHeight] (88×112) が既定値であり、同時に
+/// BoardView 側での上限（タブレットで拡大しすぎない）としても使われる。
 class CardTile extends StatelessWidget {
   final CardItem card;
   final bool selected;
   final bool highlighted;
   final VoidCallback onTap;
+  final double width;
+  final double height;
+
+  /// カードの既定サイズ。88:112 の縦横比を保つ。
+  static const double baseWidth = 88;
+  static const double baseHeight = 112;
 
   const CardTile({
     super.key,
@@ -15,6 +25,8 @@ class CardTile extends StatelessWidget {
     required this.selected,
     required this.highlighted,
     required this.onTap,
+    this.width = baseWidth,
+    this.height = baseHeight,
   });
 
   @override
@@ -62,8 +74,8 @@ class CardTile extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
-          width: 88,
-          height: 112,
+          width: width,
+          height: height,
           decoration: BoxDecoration(
             color: background,
             borderRadius: BorderRadius.circular(16),

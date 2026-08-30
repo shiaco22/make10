@@ -56,4 +56,25 @@ void main() {
     expect(rule['division'], 'exact');
     expect(rule['negatives'], true);
   });
+
+  test('puzzle keys are unique', () {
+    final keys = <String>{};
+    for (final puzzle in puzzles) {
+      expect(keys.add(puzzle.key), true,
+          reason: 'duplicate key: ${puzzle.key}');
+    }
+    expect(keys, hasLength(548));
+  });
+
+  test('each puzzle difficulty matches the derived tier', () {
+    final thresholds =
+        Thresholds.fromJson(data['thresholds'] as Map<String, dynamic>);
+    for (final puzzle in puzzles) {
+      final derivedDifficulty =
+          difficultyFor(puzzle.solutionCount, thresholds);
+      expect(derivedDifficulty, puzzle.difficulty,
+          reason: 'mismatch for ${puzzle.key}: expected $derivedDifficulty, '
+              'got ${puzzle.difficulty}');
+    }
+  });
 }

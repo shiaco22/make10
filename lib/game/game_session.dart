@@ -51,6 +51,14 @@ class GameSession extends ChangeNotifier {
   bool _usedHint = false;
   Stopwatch _stopwatch = Stopwatch();
 
+  /// この配られた問題について、すでに統計へ結果
+  /// （solved / answerShown / skipped のいずれか）を記録したか。
+  ///
+  /// undo や resetBoard でクリア後に playing へ戻れても、同じ問題を
+  /// 再クリア・再スキップ・答え表示しても 2 回目以降は記録しない
+  /// ようにするためのガード。_deal で新しい問題を配るたびにリセットする。
+  bool _outcomeRecorded = false;
+
   Puzzle get puzzle => _puzzle;
   Board get board => _board;
   PhaseKind get phase => _phase;
@@ -96,10 +104,14 @@ class GameSession extends ChangeNotifier {
     _deadEndNotice = false;
     _solutionSteps = const [];
     _usedHint = false;
+    _outcomeRecorded = false;
     _stopwatch = Stopwatch()..start();
     notifyListeners();
   }
 
+  /// 次の問題を配る。cleared / answerShown どちらのフェーズからも
+  /// UI の「次へ」導線が直接呼ぶ、意図的に phase ガードを付けていない
+  /// 進行専用の入口（skip はここを内部で使うが playing 限定でガードする）。
   void nextPuzzle() => _deal(puzzles.next(difficulty));
 
   void tapCard(int id) {
@@ -144,7 +156,8 @@ class GameSession extends ChangeNotifier {
     if (_board.isCleared) {
       _phase = PhaseKind.cleared;
       _stopwatch.stop();
-      if (recordsPracticeStats) {
+      if (recordsPracticeStats && !_outcomeRecorded) {
+        _outcomeRecorded = true;
         stats.recordSolved(
           difficulty,
           elapsedMs: _stopwatch.elapsedMilliseconds,
@@ -170,18 +183,34 @@ class GameSession extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 選択・拒否理由・ヒント・詰み通知をまとめて破棄する。
+  ///
+  /// undo / resetBoard / showAnswer など、盤面や phase が変わって
+  /// それまでの一時状態（特にヒント）が意味を失う場面で使う共通処理。
+  /// 公開の [clearSelection] は「入力中の選択だけ止める」ためのもの
+  /// なので、ヒントの破棄はそちらには混ぜない。
+  void _clearTransientState() {
+    _selectedCardId = null;
+    _selectedOp = null;
+    _lastRejection = null;
+    _hintMove = null;
+    _deadEndNotice = false;
+  }
+
   void undo() {
     if (_phase == PhaseKind.answerShown) return;
     _board = _board.undo();
     _phase = PhaseKind.playing;
-    clearSelection();
+    _clearTransientState();
+    notifyListeners();
   }
 
   void resetBoard() {
     if (_phase == PhaseKind.answerShown) return;
     _board = _board.reset();
     _phase = PhaseKind.playing;
-    clearSelection();
+    _clearTransientState();
+    notifyListeners();
   }
 
   void requestHint() {
@@ -204,13 +233,25 @@ class GameSession extends ChangeNotifier {
     _solutionSteps = solutions.isEmpty ? const [] : solutions.first.steps;
     _phase = PhaseKind.answerShown;
     _stopwatch.stop();
-    if (recordsPracticeStats) stats.recordAnswerShown(difficulty);
+    _clearTransientState();
+    if (recordsPracticeStats && !_outcomeRecorded) {
+      _outcomeRecorded = true;
+      stats.recordAnswerShown(difficulty);
+    }
     notifyListeners();
   }
 
   void skip() {
+    // 他のミューテータと同じく playing 中でなければ何もしない
+    // （cleared/answerShown 後の「次へ」は nextPuzzle() の役目）。
+    if (_phase != PhaseKind.playing) return;
+    // undo でクリア後に playing へ戻れるため、phase ガードだけでは
+    // 「クリア→undo→skip」で二重記録されるのを防げない。
     // スキップはタイムアタックでも使えるので、記録は明示的に切り分ける。
-    if (recordsPracticeStats) stats.recordSkipped(difficulty);
+    if (recordsPracticeStats && !_outcomeRecorded) {
+      _outcomeRecorded = true;
+      stats.recordSkipped(difficulty);
+    }
     nextPuzzle();
   }
 }

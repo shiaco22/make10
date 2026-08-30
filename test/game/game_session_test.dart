@@ -155,4 +155,107 @@ void main() {
     expect(stats.practice(Difficulty.normal).solved, 1);
     expect(stats.practice(Difficulty.normal).hintUsed, 1);
   });
+
+  test('re-clearing after undo does not double count the solve', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
+    await Future<void>.delayed(Duration.zero);
+    expect(stats.practice(Difficulty.normal).solved, 1);
+    final totalTimeMsAfterFirstClear =
+        stats.practice(Difficulty.normal).totalTimeMs;
+
+    // 仕様上 undo はクリア後も使える（別解を探したいだけかもしれない）。
+    // ただし同じ配られた問題を再度クリアしても、統計は増えてはいけない。
+    session.undo();
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(stats.practice(Difficulty.normal).solved, 1);
+    expect(
+      stats.practice(Difficulty.normal).totalTimeMs,
+      totalTimeMsAfterFirstClear,
+    );
+  });
+
+  test('re-solving after resetBoard does not double count the solve', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
+    await Future<void>.delayed(Duration.zero);
+    expect(stats.practice(Difficulty.normal).solved, 1);
+
+    session.resetBoard();
+    expect(session.board.cards, hasLength(4));
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(stats.practice(Difficulty.normal).solved, 1);
+  });
+
+  test(
+      'revealing the answer after undoing a clear does not record answerShown',
+      () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
+    await Future<void>.delayed(Duration.zero);
+    expect(stats.practice(Difficulty.normal).solved, 1);
+
+    // クリア後の undo で playing に戻れても、この問題は既に 1 回
+    // 結果を記録済みなので、答え表示は二重記録してはいけない。
+    session.undo();
+    session.showAnswer();
+    expect(session.phase, PhaseKind.answerShown);
+    await Future<void>.delayed(Duration.zero);
+
+    expect(stats.practice(Difficulty.normal).answerShown, 0);
+    expect(stats.practice(Difficulty.normal).solved, 1);
+  });
+
+  test('undo clears a stale dead-end notice', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    // 3*7=21 に進むと 4,9,21 になり、ここから 10 は作れない（詰み）。
+    final three = session.board.cards.firstWhere((c) => c.value == 3);
+    final seven = session.board.cards.firstWhere((c) => c.value == 7);
+    session.tapCard(three.id);
+    session.tapOp(Op.mul);
+    session.tapCard(seven.id);
+    session.requestHint();
+    expect(session.deadEndNotice, isTrue);
+
+    // undo で詰みではない [3,4,7,9] に戻ったのに通知が残っていると、
+    // 解ける盤面を解けないと案内してしまう。
+    session.undo();
+    expect(session.deadEndNotice, isFalse);
+  });
+
+  test('undo clears a stale hint move', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    session.requestHint();
+    expect(session.hintMove, isNotNull);
+
+    // undo 後は盤面もカード ID も変わっているので、古い hintMove の
+    // 位置情報を残すと無関係なカードを指してしまう。
+    session.undo();
+    expect(session.hintMove, isNull);
+  });
+
+  test('skip after a natural clear does not record an extra skip', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
+    await Future<void>.delayed(Duration.zero);
+    expect(stats.practice(Difficulty.normal).solved, 1);
+
+    session.skip();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(stats.practice(Difficulty.normal).skipped, 0);
+  });
 }

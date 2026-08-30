@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "make10-web",
+      "runtimeExecutable": "C:\\flutter\\bin\\flutter.bat",
+      "runtimeArgs": [
+        "run",
+        "-d",
+        "web-server",
+        "--web-hostname",
+        "127.0.0.1",
+        "--web-port",
+        "8080"
+      ],
+      "port": 8080
+    }
+  ]
+}

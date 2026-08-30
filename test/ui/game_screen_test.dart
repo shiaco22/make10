@@ -95,6 +95,31 @@ void main() {
     expect(find.textContaining('戻しましょう'), findsOneWidget);
   });
 
+  testWidgets(
+      'hint after a refused merge on a dead end shows the dead-end notice, '
+      'not the stale rejection', (tester) async {
+    await pumpGame(tester, [3, 4, 7, 9]);
+    // 3*7=21 -> [4,9,21] は詰み（実測で確認済み）。3*4=12 は詰みではない
+    // （12,7,9 には 5 通りの解がある）ので使わないこと。
+    await tapCardWithValue(tester, 3);
+    await tester.tap(find.text('×'));
+    await tester.pump();
+    await tapCardWithValue(tester, 7);
+
+    // 詰みに進んだ盤面で、ヒント前に 9÷4 を拒否させ、拒否メッセージを残す。
+    await tapCardWithValue(tester, 9);
+    await tester.tap(find.text('÷'));
+    await tester.pump();
+    await tapCardWithValue(tester, 4);
+    expect(find.textContaining('割り切れません'), findsOneWidget);
+
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+
+    expect(find.textContaining('戻しましょう'), findsOneWidget);
+    expect(find.textContaining('割り切れません'), findsNothing);
+  });
+
   testWidgets('showing the answer locks the board', (tester) async {
     await pumpGame(tester, [3, 4, 7, 9]);
     await tester.tap(find.text('答え'));

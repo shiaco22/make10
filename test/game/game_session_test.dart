@@ -124,6 +124,47 @@ void main() {
     expect(session.deadEndNotice, isTrue);
   });
 
+  test('requestHint clears a stale rejection when a hint exists', () async {
+    session = await sessionWithDigits([7, 2, 1, 1], stats);
+    final seven = session.board.cards[0];
+    final two = session.board.cards[1];
+    session.tapCard(seven.id);
+    session.tapOp(Op.div);
+    session.tapCard(two.id);
+    expect(session.lastRejection, isNotNull);
+
+    session.requestHint();
+    // 拒否理由が残ったままだと、GameScreen はヒントの成功を
+    // 表示できず「割り切れません」を出し続けてしまう。
+    expect(session.lastRejection, isNull);
+    expect(session.hintMove, isNotNull);
+  });
+
+  test('requestHint clears a stale rejection on a dead-ended board', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    // 3*7=21 に進むと 4,9,21 になり、ここから 10 は作れない（詰み、実測で確認済み）。
+    final three = session.board.cards.firstWhere((c) => c.value == 3);
+    final seven = session.board.cards.firstWhere((c) => c.value == 7);
+    session.tapCard(three.id);
+    session.tapOp(Op.mul);
+    session.tapCard(seven.id);
+
+    // 詰みに進んだ盤面で、ヒント前にいったん拒否される合成を試みる。
+    final nine = session.board.cards.firstWhere((c) => c.value == 9);
+    final four = session.board.cards.firstWhere((c) => c.value == 4);
+    session.tapCard(nine.id);
+    session.tapOp(Op.div);
+    session.tapCard(four.id);
+    expect(session.lastRejection, isNotNull);
+
+    session.requestHint();
+    // 拒否理由が残ったままだと、GameScreen は詰み通知（戻しましょう）を
+    // 表示できず「割り切れません」を出し続けてしまう。
+    expect(session.lastRejection, isNull);
+    expect(session.deadEndNotice, isTrue);
+    expect(session.hintMove, isNull);
+  });
+
   test('showAnswer locks the board and records the event', () async {
     session.showAnswer();
     expect(session.phase, PhaseKind.answerShown);

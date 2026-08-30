@@ -215,6 +215,7 @@ class GameSession extends ChangeNotifier {
 
   void requestHint() {
     if (!assistEnabled || _phase != PhaseKind.playing) return;
+    _lastRejection = null;
     _usedHint = true;
     final move = hint(_board.values);
     if (move == null) {

@@ -27,7 +27,7 @@ class Puzzle {
       };
 
   factory Puzzle.fromJson(Map<String, dynamic> json) => Puzzle(
-        digits: (json['d'] as List).cast<int>(),
+        digits: List<int>.from(json['d'] as List),
         solutionCount: json['n'] as int,
         requiresDivision: json['div'] as bool,
         difficulty: difficultyFromKey(json['lv'] as String),

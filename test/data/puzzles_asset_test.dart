@@ -77,4 +77,19 @@ void main() {
               'got ${puzzle.difficulty}');
     }
   });
+
+  test(
+      'fromJson throws immediately when a digit is not an integer, '
+      'rather than deferring the failure', () {
+    // Valid JSON, wrong shape: 'd' holds a non-integer. A lazy
+    // (json['d'] as List).cast<int>() would let this through fromJson
+    // unnoticed and only throw later, deep inside the solver or board.
+    final malformed = <String, dynamic>{
+      'd': [1, 2, 3, 'x'],
+      'n': 1,
+      'div': false,
+      'lv': 'easy',
+    };
+    expect(() => Puzzle.fromJson(malformed), throwsA(isA<TypeError>()));
+  });
 }

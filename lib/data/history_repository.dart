@@ -26,7 +26,7 @@ class HistoryRepository {
       for (final difficulty in Difficulty.values) {
         final list = decoded[difficulty.key];
         if (list is List) {
-          _byDifficulty[difficulty.key] = list.cast<String>();
+          _byDifficulty[difficulty.key] = List<String>.from(list);
         }
       }
     } catch (_) {

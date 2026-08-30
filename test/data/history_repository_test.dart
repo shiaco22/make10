@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:make10/data/history_repository.dart';
 import 'package:make10/domain/difficulty.dart';
@@ -56,5 +58,45 @@ void main() {
     final repo = HistoryRepository();
     await repo.load();
     expect(repo.recent(Difficulty.easy), isEmpty);
+  });
+
+  test(
+      'falls back to empty history for every difficulty when one holds a '
+      'non-string element', () async {
+    // Valid JSON, wrong shape: 'normal' has a non-string element. A lazy
+    // list.cast<String>() would let this through load() unnoticed and only
+    // throw later, when the list is actually read.
+    SharedPreferences.setMockInitialValues({
+      'make10.history': jsonEncode({
+        'version': 1,
+        'easy': ['0,1,2,8'],
+        'normal': ['1,2,3,4', 5],
+        'hard': ['1,5,5,5'],
+      }),
+    });
+    final repo = HistoryRepository();
+    await repo.load();
+    for (final difficulty in Difficulty.values) {
+      expect(repo.recent(difficulty), isEmpty,
+          reason: 'expected empty history for ${difficulty.key}');
+    }
+  });
+
+  test(
+      'falls back to empty history for every difficulty when one is not a '
+      'list at all', () async {
+    // Valid JSON, wrong shape: 'easy' is a number instead of a list.
+    SharedPreferences.setMockInitialValues({
+      'make10.history': jsonEncode({
+        'version': 1,
+        'easy': 42,
+      }),
+    });
+    final repo = HistoryRepository();
+    await repo.load();
+    for (final difficulty in Difficulty.values) {
+      expect(repo.recent(difficulty), isEmpty,
+          reason: 'expected empty history for ${difficulty.key}');
+    }
   });
 }

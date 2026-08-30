@@ -77,4 +77,40 @@ void main() {
     expect(board.isFinished, isTrue);
     expect(board.isCleared, isFalse);
   });
+
+  test('apply rejects merging a card with itself', () {
+    final board = Board.initial([3, 4, 7, 9]);
+    final id = board.cards[0].id;
+    expect(board.apply(id, id, Op.add), isNull);
+  });
+
+  test('apply rejects an id that never existed', () {
+    final board = Board.initial([3, 4, 7, 9]);
+    expect(board.apply(board.cards[0].id, -1, Op.add), isNull);
+  });
+
+  test('apply rejects a stale id belonging to an already-merged card', () {
+    var board = Board.initial([3, 4, 7, 9]);
+    final consumedId = board.cards[1].id;
+    board = board.apply(board.cards[0].id, consumedId, Op.add)!;
+    // consumedId was folded into the merge above and no longer refers to
+    // a card on the board; re-using it (as a double-tap in the UI might)
+    // must be rejected, not throw.
+    expect(board.apply(board.cards[0].id, consumedId, Op.mul), isNull);
+  });
+
+  test('the produced card is appended at the end, not into either merged position', () {
+    final board = Board.initial([3, 4, 7, 9]);
+    final four = board.cards[1];
+    final seven = board.cards[2];
+    final next = board.apply(four.id, seven.id, Op.add)!;
+    expect(next.values, [3, 9, 11]);
+  });
+
+  test('digits and cards cannot be mutated through their getters', () {
+    final board = Board.initial([3, 4, 7, 9]);
+    expect(() => board.digits[0] = 999, throwsUnsupportedError);
+    expect(() => board.cards.removeAt(0), throwsUnsupportedError);
+    expect(board.reset().values, [3, 4, 7, 9]);
+  });
 }

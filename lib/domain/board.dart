@@ -25,13 +25,22 @@ class Board {
   final List<Move> history;
   final int _nextId;
 
-  const Board._(this.digits, this.cards, this.history, this._nextId);
+  /// 呼び出し側が要素を書き換えられないよう、各リストは構築時に
+  /// unmodifiable なビューとして保持する。
+  Board._(
+    List<int> digits,
+    List<CardItem> cards,
+    List<Move> history,
+    this._nextId,
+  )   : digits = List.unmodifiable(digits),
+        cards = List.unmodifiable(cards),
+        history = List.unmodifiable(history);
 
   factory Board.initial(List<int> digits) {
     final cards = <CardItem>[
       for (var i = 0; i < digits.length; i++) CardItem(i, digits[i]),
     ];
-    return Board._(List.of(digits), cards, const [], digits.length);
+    return Board._(List.of(digits), cards, <Move>[], digits.length);
   }
 
   List<int> get values => [for (final c in cards) c.value];

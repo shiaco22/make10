@@ -8,6 +8,7 @@ import 'package:make10/domain/difficulty.dart';
 import 'package:make10/domain/operation.dart';
 import 'package:make10/domain/solver.dart';
 import 'package:make10/game/game_session.dart';
+import 'package:make10/game/time_attack_session.dart';
 
 String realPuzzlesJson() => File('assets/puzzles.json').readAsStringSync();
 
@@ -47,4 +48,18 @@ void playSolution(GameSession session) {
     session.tapOp(move.op);
     session.tapCard(right.id);
   }
+}
+
+Future<TimeAttackSession> timeAttackWith(StatsRepository stats) async {
+  final history = HistoryRepository();
+  await history.load();
+  final puzzles = PuzzleRepository(history, random: Random(3));
+  await puzzles.loadFromString(realPuzzlesJson());
+  final ta = TimeAttackSession(
+    puzzles: puzzles,
+    stats: stats,
+    difficulty: Difficulty.normal,
+  );
+  ta.start();
+  return ta;
 }

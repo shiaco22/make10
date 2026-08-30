@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:make10/data/history_repository.dart';
+import 'package:make10/data/puzzle_repository.dart';
 import 'package:make10/data/stats_repository.dart';
 import 'package:make10/domain/difficulty.dart';
 import 'package:make10/game/time_attack_session.dart';
@@ -100,5 +102,50 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(second.bestUpdated, isFalse);
     expect(stats.timeAttack(Difficulty.normal).bestScore, 2);
+  });
+
+  test('disposing right after time-up does not throw once the pending save settles',
+      () async {
+    final ta = await timeAttackWith(stats);
+    ta.tick(kTimeAttackDuration);
+    ta.dispose();
+    // 非同期の保存コールバックがここで発火する。例外が漏れれば
+    // このテスト自体が失敗する（expect でラップしない理由）。
+    await Future<void>.delayed(Duration.zero);
+  });
+
+  test('disposing twice does not throw', () async {
+    final ta = await timeAttackWith(stats);
+    expect(() {
+      ta.dispose();
+      ta.dispose();
+    }, returnsNormally);
+  });
+
+  test('a tick after an early dispose does not throw', () async {
+    final ta = await timeAttackWith(stats);
+    ta.dispose();
+    expect(() => ta.tick(const Duration(seconds: 1)), returnsNormally);
+  });
+
+  test('disposing without ever starting does not throw', () {
+    final ta = TimeAttackSession(
+      puzzles: PuzzleRepository(HistoryRepository()),
+      stats: stats,
+      difficulty: Difficulty.normal,
+    );
+    expect(() => ta.dispose(), returnsNormally);
+  });
+
+  test('isSavingResult is true only while the result write is pending',
+      () async {
+    final ta = await timeAttackWith(stats);
+    expect(ta.isSavingResult, isFalse);
+    playSolution(ta.session);
+    ta.tick(kTimeAttackDuration);
+    expect(ta.isSavingResult, isTrue);
+    await Future<void>.delayed(Duration.zero);
+    expect(ta.isSavingResult, isFalse);
+    expect(ta.bestUpdated, isTrue);
   });
 }

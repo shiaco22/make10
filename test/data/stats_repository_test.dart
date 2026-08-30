@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:make10/data/stats_repository.dart';
 import 'package:make10/domain/difficulty.dart';
@@ -82,5 +84,164 @@ void main() {
     final repo = StatsRepository();
     await repo.load();
     expect(repo.practice(Difficulty.easy).solved, 0);
+  });
+
+  test(
+      'falls back to zeros for every difficulty when one practice entry has '
+      'a counter field with wrong type', () async {
+    // Valid JSON, wrong shape: 'normal' practice has 'solved' as a string
+    // instead of an int. The cast will throw, triggering the all-or-nothing
+    // catch block that clears both maps entirely.
+    SharedPreferences.setMockInitialValues({
+      'make10.stats': jsonEncode({
+        'version': 1,
+        'practice': {
+          'easy': {
+            'solved': 2,
+            'totalTimeMs': 10000,
+            'hintUsed': 0,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+          'normal': {
+            'solved': '5',
+            'totalTimeMs': 15000,
+            'hintUsed': 1,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+          'hard': {
+            'solved': 1,
+            'totalTimeMs': 5000,
+            'hintUsed': 0,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+        },
+        'timeAttack': {
+          'easy': {'bestScore': 10, 'playCount': 1},
+          'normal': {'bestScore': 20, 'playCount': 2},
+          'hard': {'bestScore': 30, 'playCount': 3},
+        },
+      }),
+    });
+    final repo = StatsRepository();
+    await repo.load();
+    // All difficulties should read back as zeros, even those with valid data
+    for (final difficulty in Difficulty.values) {
+      expect(repo.practice(difficulty).solved, 0,
+          reason: 'expected zero solved for practice ${difficulty.key}');
+      expect(repo.practice(difficulty).totalTimeMs, 0,
+          reason: 'expected zero totalTimeMs for practice ${difficulty.key}');
+      expect(repo.timeAttack(difficulty).bestScore, 0,
+          reason: 'expected zero bestScore for timeAttack ${difficulty.key}');
+      expect(repo.timeAttack(difficulty).playCount, 0,
+          reason: 'expected zero playCount for timeAttack ${difficulty.key}');
+    }
+  });
+
+  test(
+      'falls back to zeros for every difficulty when one practice entry has '
+      'another counter field with wrong type', () async {
+    // Valid JSON, wrong shape: 'hard' practice has 'hintUsed' as a string.
+    // Multiple wrong-type fields test that the catch fires on any parsing error.
+    SharedPreferences.setMockInitialValues({
+      'make10.stats': jsonEncode({
+        'version': 1,
+        'practice': {
+          'easy': {
+            'solved': 2,
+            'totalTimeMs': 10000,
+            'hintUsed': 0,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+          'normal': {
+            'solved': 5,
+            'totalTimeMs': 15000,
+            'hintUsed': 1,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+          'hard': {
+            'solved': 1,
+            'totalTimeMs': 5000,
+            'hintUsed': 'oops',
+            'answerShown': 0,
+            'skipped': 0,
+          },
+        },
+        'timeAttack': {
+          'easy': {'bestScore': 10, 'playCount': 1},
+          'normal': {'bestScore': 20, 'playCount': 2},
+          'hard': {'bestScore': 30, 'playCount': 3},
+        },
+      }),
+    });
+    final repo = StatsRepository();
+    await repo.load();
+    // All difficulties should read back as zeros despite valid data in easy/normal
+    for (final difficulty in Difficulty.values) {
+      expect(repo.practice(difficulty).solved, 0,
+          reason: 'expected zero solved for practice ${difficulty.key}');
+      expect(repo.practice(difficulty).totalTimeMs, 0,
+          reason: 'expected zero totalTimeMs for practice ${difficulty.key}');
+      expect(repo.timeAttack(difficulty).bestScore, 0,
+          reason: 'expected zero bestScore for timeAttack ${difficulty.key}');
+      expect(repo.timeAttack(difficulty).playCount, 0,
+          reason: 'expected zero playCount for timeAttack ${difficulty.key}');
+    }
+  });
+
+  test(
+      'falls back to zeros for every difficulty when one timeAttack entry has '
+      'a counter field with wrong type', () async {
+    // Valid JSON, wrong shape: 'hard' timeAttack has 'bestScore' as a string.
+    SharedPreferences.setMockInitialValues({
+      'make10.stats': jsonEncode({
+        'version': 1,
+        'practice': {
+          'easy': {
+            'solved': 2,
+            'totalTimeMs': 10000,
+            'hintUsed': 0,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+          'normal': {
+            'solved': 5,
+            'totalTimeMs': 15000,
+            'hintUsed': 1,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+          'hard': {
+            'solved': 1,
+            'totalTimeMs': 5000,
+            'hintUsed': 0,
+            'answerShown': 0,
+            'skipped': 0,
+          },
+        },
+        'timeAttack': {
+          'easy': {'bestScore': 10, 'playCount': 1},
+          'normal': {'bestScore': 20, 'playCount': 2},
+          'hard': {'bestScore': '99', 'playCount': 3},
+        },
+      }),
+    });
+    final repo = StatsRepository();
+    await repo.load();
+    // All difficulties should read back as zeros, despite valid practice data
+    for (final difficulty in Difficulty.values) {
+      expect(repo.practice(difficulty).solved, 0,
+          reason: 'expected zero solved for practice ${difficulty.key}');
+      expect(repo.practice(difficulty).totalTimeMs, 0,
+          reason: 'expected zero totalTimeMs for practice ${difficulty.key}');
+      expect(repo.timeAttack(difficulty).bestScore, 0,
+          reason: 'expected zero bestScore for timeAttack ${difficulty.key}');
+      expect(repo.timeAttack(difficulty).playCount, 0,
+          reason: 'expected zero playCount for timeAttack ${difficulty.key}');
+    }
   });
 }

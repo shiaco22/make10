@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter_test/flutter_test.dart';
 import 'package:make10/data/history_repository.dart';
 import 'package:make10/data/puzzle_repository.dart';
 import 'package:make10/data/stats_repository.dart';
@@ -43,7 +44,13 @@ void playSolution(GameSession session) {
     if (move == null) return;
     final left = session.board.cards[move.leftIndex];
     final right = session.board.cards[move.rightIndex];
-    session.tapCard(left.id);
+    // 直前の合成結果は自動選択されている（GameSession.tapCard 末尾）。
+    // それが今回の左オペランドと同じカードなら、ここで tapCard すると
+    // 「選択済みカードの再タップ＝選択解除」に化けて手が一つ消える。
+    // 既に選択済みならタップし直さず、選択を維持する。
+    if (session.selectedCardId != left.id) {
+      session.tapCard(left.id);
+    }
     session.tapOp(move.op);
     session.tapCard(right.id);
   }
@@ -61,4 +68,29 @@ Future<TimeAttackSession> timeAttackWith(StatsRepository stats) async {
   );
   ta.start();
   return ta;
+}
+
+/// [ta] の結果保存が確定するまでイベントループを回して待つ。
+///
+/// `TimeAttackSession._finish` は `StatsRepository.recordTimeAttack(...)` を
+/// await せずに `.then(...)` で受けるだけなので、書き込みが実際に収まる
+/// タイミングは呼び出し側からは非同期的にしか観測できない。
+/// [TimeAttackSession.isSavingResult] は、その保存が（成功・失敗を問わず）
+/// 確定するまで true のままになる、公開されている唯一の完了シグナルなので、
+/// `await Future<void>.delayed(Duration.zero)` を 1 回叩いて祈るのではなく、
+/// これが false に落ちるまで有界回数だけポーリングする。
+///
+/// [maxTurns] を使い切っても false に落ちなければ、無言で通さず
+/// はっきりテストを失敗させる — 実装が壊れて保存が永久に確定しなくなった
+/// ケースを、たまたま今のテストが黙って見逃すことがないように。
+Future<void> waitForResultSave(TimeAttackSession ta, {int maxTurns = 50}) async {
+  for (var i = 0; i < maxTurns && ta.isSavingResult; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+  if (ta.isSavingResult) {
+    fail(
+      'TimeAttackSession.isSavingResult は $maxTurns 回イベントループを '
+      '回しても true のままだった（結果の保存が確定しなかった）。',
+    );
+  }
 }

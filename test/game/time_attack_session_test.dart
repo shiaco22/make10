@@ -73,7 +73,7 @@ void main() {
     final ta = await timeAttackWith(stats);
     playSolution(ta.session);
     ta.tick(kTimeAttackDuration);
-    await Future<void>.delayed(Duration.zero);
+    await waitForResultSave(ta);
     expect(ta.bestUpdated, isTrue);
     expect(stats.timeAttack(Difficulty.normal).bestScore, 1);
     expect(stats.timeAttack(Difficulty.normal).playCount, 1);
@@ -95,11 +95,11 @@ void main() {
     playSolution(first.session);
     playSolution(first.session);
     first.tick(kTimeAttackDuration);
-    await Future<void>.delayed(Duration.zero);
+    await waitForResultSave(first);
 
     final second = await timeAttackWith(stats);
     second.tick(kTimeAttackDuration);
-    await Future<void>.delayed(Duration.zero);
+    await waitForResultSave(second);
     expect(second.bestUpdated, isFalse);
     expect(stats.timeAttack(Difficulty.normal).bestScore, 2);
   });
@@ -111,7 +111,10 @@ void main() {
     ta.dispose();
     // 非同期の保存コールバックがここで発火する。例外が漏れれば
     // このテスト自体が失敗する（expect でラップしない理由）。
-    await Future<void>.delayed(Duration.zero);
+    // dispose 後も isSavingResult は読める（_disposed は
+    // notifyListeners だけを止める）ので、保存が確定するまで
+    // ここで確実に待ってから終える。
+    await waitForResultSave(ta);
   });
 
   test('disposing twice does not throw', () async {

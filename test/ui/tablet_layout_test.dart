@@ -20,6 +20,7 @@ import 'package:make10/ui/app.dart';
 import 'package:make10/ui/difficulty_screen.dart';
 import 'package:make10/ui/game_screen.dart';
 import 'package:make10/ui/widgets/action_bar.dart';
+import 'package:make10/ui/widgets/board_view.dart';
 import 'package:make10/ui/widgets/card_tile.dart';
 import 'package:make10/ui/widgets/operator_bar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -414,4 +415,183 @@ void main() {
   // is 1.0 below the 600 tablet breakpoint, none of this feature's changes
   // touch that code path; the existing test is left as-is and re-verified
   // (see the task report) rather than duplicated here.
+
+  // --- New requirements added for the "tablet compose" fix below -----------
+  //
+  // The four groups below are new for this task (composition + retuned
+  // scale). Each was run against the pre-fix code first; see the task
+  // report for what was actually observed for each ("must fail against the
+  // current code... say honestly if any passes either way").
+
+  group(
+      'new requirement 1: the board and the operator bar stay close '
+      'together on a tall portrait tablet', () {
+    testWidgets('at 820x1180, the card-row-to-operator-bar gap is small',
+        (tester) async {
+      await pumpGameAtSize(tester, const Size(820, 1180));
+      expect(tester.takeException(), isNull);
+
+      final cardsBottom = cardRects(tester)
+          .map((r) => r.bottom)
+          .reduce((a, b) => a > b ? a : b);
+      final operatorTop = tester.getRect(find.byType(OperatorBar)).top;
+      final gap = operatorTop - cardsBottom;
+
+      // ignore: avoid_print
+      print('card-row-to-operator-bar gap at 820x1180: '
+          '${gap.toStringAsFixed(1)}px');
+
+      // Measured ~350px against the pre-fix implementation, where the
+      // board's Expanded absorbs 100% of a tall screen's slack, floating
+      // the board in the middle of the screen while the operator bar
+      // stays pinned near the bottom. 120px is chosen as comfortably
+      // "thumb-reachable, still one visual group" -- it covers the
+      // notice line's reserved height (24px) plus the explicit 12px
+      // SizedBox gap plus real breathing room, while remaining a small
+      // fraction of the ~350px this must actually fail against.
+      expect(
+        gap,
+        lessThanOrEqualTo(120),
+        reason: 'the board and the operator bar must stay close together '
+            'on a tall tablet screen, not be pulled to opposite ends '
+            '(measured ${gap.toStringAsFixed(1)}px)',
+      );
+    });
+  });
+
+  group(
+      'new requirement 2: the home screen buttons occupy a sensibly '
+      'larger share of the screen width than today', () {
+    // Measured today (pre-fix uiScale): the button is 314.7pt wide
+    // regardless of orientation (uiScale depends only on the shared
+    // 820pt shortest side), i.e. ~38.4% of an 820-wide portrait screen
+    // and ~26.7% of a 1180-wide landscape screen. The thresholds below
+    // sit clearly above both of those measurements without asking for a
+    // near-full-bleed button.
+    // Not `const`: Size's `==` is a normal (non-primitive) override, which
+    // Dart allows for a runtime Map literal's keys but not a const one.
+    final minShare = {
+      const Size(820, 1180): 0.45,
+      const Size(1180, 820): 0.30,
+    };
+
+    for (final size in tabletSizes) {
+      testWidgets('at ${size.width.toInt()}x${size.height.toInt()}',
+          (tester) async {
+        await pumpHomeAtSize(tester, size);
+        final button = homeButtonSize(tester);
+        final share = button.width / size.width;
+
+        // ignore: avoid_print
+        print('home button share at ${size.width.toInt()}x'
+            '${size.height.toInt()}: ${(share * 100).toStringAsFixed(1)}% '
+            '(${button.width.toStringAsFixed(1)}pt of '
+            '${size.width.toInt()}pt)');
+
+        expect(
+          share,
+          greaterThanOrEqualTo(minShare[size]!),
+          reason: 'the primary button must occupy a sensibly larger '
+              'share of the width than the ~38%/~27% measured today '
+              '(measured ${(share * 100).toStringAsFixed(1)}%)',
+        );
+      });
+    }
+  });
+
+  group(
+      'new requirement 3: iPad mini landscape (the shortest tablet) '
+      'fits everything on screen', () {
+    const size = Size(1133, 744);
+
+    testWidgets('idle playing state', (tester) async {
+      await pumpGameAtSize(tester, size);
+      expect(tester.takeException(), isNull);
+
+      final boardRect = tester.getRect(find.byType(BoardView));
+      final operatorRect = tester.getRect(find.byType(OperatorBar));
+      final actionRect = tester.getRect(find.byType(ActionBar));
+
+      for (final r in [boardRect, operatorRect, actionRect]) {
+        expect(r.left, greaterThanOrEqualTo(-0.5));
+        expect(r.top, greaterThanOrEqualTo(-0.5));
+        expect(r.right, lessThanOrEqualTo(size.width + 0.5));
+        expect(r.bottom, lessThanOrEqualTo(size.height + 0.5));
+      }
+    });
+
+    testWidgets('cleared state (tallest optional content above the bars)',
+        (tester) async {
+      final session = await pumpGameAtSize(tester, size);
+      while (!session.board.isFinished) {
+        final move = hint(session.board.values)!;
+        final left = session.board.cards[move.leftIndex];
+        final right = session.board.cards[move.rightIndex];
+        session.tapCard(left.id);
+        session.tapOp(move.op);
+        session.tapCard(right.id);
+        await tester.pump();
+      }
+      expect(session.phase, PhaseKind.cleared);
+      expect(tester.takeException(), isNull);
+
+      final boardRect = tester.getRect(find.byType(BoardView));
+      final operatorRect = tester.getRect(find.byType(OperatorBar));
+      final actionRect = tester.getRect(find.byType(ActionBar));
+      for (final r in [boardRect, operatorRect, actionRect]) {
+        expect(r.top, greaterThanOrEqualTo(-0.5));
+        expect(r.bottom, lessThanOrEqualTo(size.height + 0.5));
+      }
+    });
+  });
+
+  group(
+      'new requirement 4: iPad Pro landscape does not overflow and does '
+      'not stretch the content edge to edge', () {
+    const size = Size(1366, 1024);
+
+    testWidgets('idle playing state', (tester) async {
+      await pumpGameAtSize(tester, size);
+      expect(tester.takeException(), isNull);
+
+      final boardRect = tester.getRect(find.byType(BoardView));
+      final operatorRect = tester.getRect(find.byType(OperatorBar));
+      final actionRect = tester.getRect(find.byType(ActionBar));
+
+      for (final r in [boardRect, operatorRect, actionRect]) {
+        expect(r.top, greaterThanOrEqualTo(-0.5));
+        expect(r.bottom, lessThanOrEqualTo(size.height + 0.5));
+      }
+
+      // BoardView's own layout box (found via find.byType) always fills
+      // its slot's full width -- it is a Center, which (per
+      // RenderPositionedBox) claims the incoming constraint's maxWidth
+      // whenever that width is bounded, regardless of how narrow its
+      // child actually paints. So "edge to edge" for the board is judged
+      // by the actual painted card row instead (as criterion 1 above
+      // does), not BoardView's own hit-testable bounds. OperatorBar and
+      // ActionBar do not have this gap: both are rooted in a FittedBox,
+      // which sizes itself to its child's natural size when the incoming
+      // constraint is merely loose (only an *unbounded* constraint makes
+      // it fill available space), so their own rects already reflect
+      // what is actually painted.
+      final cardRow = cardRects(tester);
+      final rowLeft = cardRow.map((r) => r.left).reduce((a, b) => a < b ? a : b);
+      final rowRight = cardRow.map((r) => r.right).reduce((a, b) => a > b ? a : b);
+
+      for (final entry in {
+        'board': rowRight - rowLeft,
+        'operator bar': operatorRect.width,
+        'action bar': actionRect.width,
+      }.entries) {
+        expect(
+          entry.value,
+          lessThan(size.width * 0.8),
+          reason: '${entry.key} must read as a centred group with '
+              'visible margin on a very wide screen, not span edge to '
+              'edge',
+        );
+      }
+    });
+  });
 }

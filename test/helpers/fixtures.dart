@@ -5,7 +5,6 @@ import 'package:make10/data/history_repository.dart';
 import 'package:make10/data/puzzle_repository.dart';
 import 'package:make10/data/stats_repository.dart';
 import 'package:make10/domain/difficulty.dart';
-import 'package:make10/domain/operation.dart';
 import 'package:make10/domain/solver.dart';
 import 'package:make10/game/game_session.dart';
 import 'package:make10/game/time_attack_session.dart';

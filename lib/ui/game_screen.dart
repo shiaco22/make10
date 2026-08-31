@@ -94,7 +94,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              if (widget.statusRow != null) widget.statusRow!,
+              ?widget.statusRow,
               _pendingLine(theme),
               Expanded(
                 child: BoardView(

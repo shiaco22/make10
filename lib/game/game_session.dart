@@ -114,6 +114,27 @@ class GameSession extends ChangeNotifier {
   /// 進行専用の入口（skip はここを内部で使うが playing 限定でガードする）。
   void nextPuzzle() => _deal(puzzles.next(difficulty));
 
+  /// アプリがフォアグラウンドを離れている間、計測を止める。
+  ///
+  /// _stopwatch は壁時計ベースなので、バックグラウンドで越夜されると
+  /// 数時間分がそのまま経過時間として記録され、totalTimeMs /
+  /// averageTimeMs を（消去手段が無いまま）永久に壊してしまう。呼び出し元
+  /// （GameScreen）が WidgetsBindingObserver 経由でライフサイクルの変化を
+  /// 中継する。既に止まっていれば Stopwatch.stop() は無害な no-op。
+  void pauseTimer() {
+    if (_phase == PhaseKind.playing) _stopwatch.stop();
+  }
+
+  /// [pauseTimer] で止めた計測を再開する。
+  ///
+  /// playing 以外（cleared / answerShown）で止まっている場合は、
+  /// その問題の結果は既に確定・記録済みか、これ以上読まれない値なので
+  /// 再開しない。Stopwatch.start() は経過時間をリセットしないので、
+  /// バックグラウンドで過ぎた時間だけを除外して再開できる。
+  void resumeTimer() {
+    if (_phase == PhaseKind.playing) _stopwatch.start();
+  }
+
   void tapCard(int id) {
     if (_phase != PhaseKind.playing) return;
     _lastRejection = null;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:make10/data/stats_repository.dart';
+import 'package:make10/domain/difficulty.dart';
 import 'package:make10/domain/operation.dart';
 import 'package:make10/domain/solver.dart';
 import 'package:make10/game/game_session.dart';
@@ -281,6 +282,53 @@ void main() {
       expect(actionEnabled(tester, '最初から'), isFalse);
       expect(actionEnabled(tester, 'スキップ'), isFalse);
       expect(find.text('次の問題へ'), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'time spent backgrounded is excluded from the recorded solve time',
+    (tester) async {
+      final session = await pumpGame(tester, [3, 4, 7, 9]);
+
+      // バックグラウンドへ。実時間の lifecycle 遷移を本物どおりに
+      // WidgetsBinding 経由で流し込む（GameScreen が
+      // WidgetsBindingObserver として拾う想定）。
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+
+      // GameSession の Stopwatch は意図的に実時間で動く（仕様上、別の
+      // 計測方式には切り替えない）。一方 testWidgets は FakeAsync 上で
+      // 動くため、素の Future.delayed はフェイクの時計を誰も進めない限り
+      // 永遠に発火しない。runAsync で本物の非同期の外へ出て、実際に
+      // 壁時計の時間を経過させる。
+      const backgroundGap = Duration(milliseconds: 800);
+      await tester.runAsync(() => Future<void>.delayed(backgroundGap));
+
+      // フォアグラウンドへ復帰し、直後にクリアする
+      // （復帰後の実プレイ時間はミリ秒オーダーに収まるはず）。
+      tester.binding
+          .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      while (!session.board.isFinished) {
+        final move = hint(session.board.values)!;
+        final left = session.board.cards[move.leftIndex];
+        final right = session.board.cards[move.rightIndex];
+        session.tapCard(left.id);
+        session.tapOp(move.op);
+        session.tapCard(right.id);
+        await tester.pump();
+      }
+      expect(session.phase, PhaseKind.cleared);
+      // recordSolved は tapCard の中で（await せず）呼ばれるが、
+      // _practice の更新自体は最初の await より前、つまり同期的に効く。
+      // pump() でひと呼吸置いて確実にする。
+      await tester.pump();
+
+      // バックグラウンドの 800ms がそのまま数えられていれば totalTimeMs
+      // は 800 以上になる。実際に「プレイ」した時間だけが数えられていれば、
+      // それよりずっと小さいはず。
+      expect(
+        stats.practice(Difficulty.normal).totalTimeMs,
+        lessThan(backgroundGap.inMilliseconds ~/ 2),
+      );
     },
   );
 }

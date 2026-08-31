@@ -208,8 +208,13 @@ class GameSession extends ChangeNotifier {
     }
 
     _board = next;
-    _selectedCardId = null;
     _selectedOp = null;
+    // 合成の結果を自動選択する — 選択スタイルを引き継いで、演算子だけを
+    // すぐ選び直せるようにするため（演算子自体は引き継がない）。ただし
+    // 盤面が 1 枚に終わった場合（クリアでもミスでも）は、それ以上組み合わせる
+    // 相手がいないので選択を残さない。
+    _selectedCardId =
+        _board.isFinished ? null : _board.history.last.produced.id;
     if (_board.isCleared) {
       _phase = PhaseKind.cleared;
       _stopwatch.stop();

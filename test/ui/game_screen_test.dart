@@ -105,7 +105,13 @@ void main() {
     await tester.pump();
     await tapCardWithValue(tester, 4);
     expect(find.byType(CardTile), findsNWidgets(3));
-    expect(find.text('12'), findsOneWidget);
+    // A plain find.text('12') would now also match the pending-line preview
+    // of the auto-selected produced card (see the next test below), so this
+    // targets the card face specifically.
+    expect(
+      find.byWidgetPredicate((w) => w is CardTile && w.card.value == 12),
+      findsOneWidget,
+    );
   });
 
   testWidgets('a full solve shows the cleared message', (tester) async {
@@ -120,6 +126,48 @@ void main() {
       await tester.pump();
     }
     expect(find.textContaining('クリア'), findsOneWidget);
+  });
+
+  testWidgets(
+      'after a merge, the produced card is shown selected and ready for '
+      'the next operator', (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tapCardWithValue(tester, 3);
+    await tester.tap(find.text('+'));
+    await tester.pump();
+    await tapCardWithValue(tester, 9);
+
+    final producedTile = tester.widget<CardTile>(
+      find.byWidgetPredicate((w) => w is CardTile && w.card.value == 12),
+    );
+    expect(producedTile.selected, isTrue);
+    expect(session.selectedOp, isNull);
+    // The pending-line preview now also shows the auto-selected card's
+    // value (no operator chosen yet), on top of the card's own face.
+    expect(find.text('12'), findsNWidgets(2));
+
+    // 演算子が引き継がれていないことを機能的にも確認する:
+    // すぐに次の演算子を押せて、選択中のカードに対して効く。
+    await tester.tap(find.text('×'));
+    await tester.pump();
+    expect(session.selectedOp, Op.mul);
+  });
+
+  testWidgets('the final card is not shown selected once the board clears',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    while (!session.board.isFinished) {
+      final move = hint(session.board.values)!;
+      final left = session.board.cards[move.leftIndex];
+      final right = session.board.cards[move.rightIndex];
+      session.tapCard(left.id);
+      session.tapOp(move.op);
+      session.tapCard(right.id);
+      await tester.pump();
+    }
+    expect(session.phase, PhaseKind.cleared);
+    final finalTile = tester.widget<CardTile>(find.byType(CardTile));
+    expect(finalTile.selected, isFalse);
   });
 
   testWidgets('a non-exact division keeps the selection and warns',

@@ -38,15 +38,68 @@ void main() {
     expect(session.phase, PhaseKind.playing);
   });
 
-  test('tapping card then op then card performs a merge', () {
+  test(
+      'tapping card then op then card performs a merge and auto-selects the '
+      'produced card with no operator pending', () {
     final a = session.board.cards[0];
     final b = session.board.cards[1];
     session.tapCard(a.id);
     session.tapOp(Op.add);
     session.tapCard(b.id);
     expect(session.board.cards, hasLength(3));
+    expect(session.selectedOp, isNull);
+    // 合成の結果が自動選択され、演算子だけは引き継がれない。
+    final producedId = session.board.history.last.produced.id;
+    expect(session.selectedCardId, producedId);
+    expect(session.board.cardById(producedId)!.value, a.value + b.value);
+  });
+
+  test(
+      'a refused merge after a merge auto-selected its result keeps that '
+      'card and the operator selected', () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    session.tapCard(session.board.cards[0].id); // 3
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id); // 4 -> produces 7 (auto-selected)
+    final producedId = session.selectedCardId;
+    expect(producedId, isNotNull);
+
+    session.tapOp(Op.div);
+    final nine = session.board.cards.firstWhere((c) => c.value == 9);
+    session.tapCard(nine.id); // 7 ÷ 9 は割り切れない -> 拒否
+    expect(session.board.cards, hasLength(3));
+    expect(session.selectedCardId, producedId);
+    expect(session.selectedOp, Op.div);
+    expect(session.lastRejection, isNotNull);
+  });
+
+  test('a full clear leaves no stray selection on the finished board',
+      () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    playSolution(session);
+    expect(session.phase, PhaseKind.cleared);
     expect(session.selectedCardId, isNull);
     expect(session.selectedOp, isNull);
+  });
+
+  test('a final merge that misses the target also leaves no stray selection',
+      () async {
+    session = await sessionWithDigits([1, 1, 1, 1], stats);
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+
+    expect(session.board.cards, hasLength(1));
+    expect(session.board.cards.single.value, 4);
+    expect(session.phase, PhaseKind.playing);
+    expect(session.missedTarget, isTrue);
+    expect(session.selectedCardId, isNull);
   });
 
   test('tapping the selected card again clears the selection', () {
@@ -163,6 +216,33 @@ void main() {
     expect(session.board.cards, hasLength(3));
     session.undo();
     expect(session.board.cards, hasLength(4));
+  });
+
+  test(
+      'undo clears the selection instead of restoring one on the cards it '
+      'brings back', () {
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    // 合成直後は結果が自動選択されている。undo は 2 枚を復元するので、
+    // どちらか一方を選び直すのではなく、選択自体を空にする
+    // （復元される 2 枚のどちらにも「続きから」の意味はないため）。
+    expect(session.selectedCardId, isNotNull);
+
+    session.undo();
+    expect(session.selectedCardId, isNull);
+    expect(session.selectedOp, isNull);
+  });
+
+  test('resetBoard clears the selection rather than restoring one', () {
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    expect(session.selectedCardId, isNotNull);
+
+    session.resetBoard();
+    expect(session.selectedCardId, isNull);
+    expect(session.selectedOp, isNull);
   });
 
   test('reset returns to four cards after several merges', () {

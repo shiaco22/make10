@@ -7,6 +7,12 @@ import 'widgets/action_bar.dart';
 import 'widgets/board_view.dart';
 import 'widgets/operator_bar.dart';
 
+/// 拒否メッセージを表示しておく「短時間」（仕様 §2.5 / §10）。
+///
+/// この間ユーザーが何もしなくても、[GameSession.dismissRejection] が
+/// 呼ばれてメッセージが自動で消える。
+const Duration kRejectionMessageDuration = Duration(seconds: 2);
+
 /// 盤面を操作する画面。プラクティスとタイムアタックで共用する。
 ///
 /// [statusRow] にはタイムアタックの残り時間などを差し込む。
@@ -39,15 +45,34 @@ class GameScreen extends StatefulWidget {
 /// タイムアタックの残り時間は TimeAttackSession が Ticker から受け取る
 /// 実時間のみで決まり、これは意図的に変えない
 /// （バックグラウンドから戻ると一気に時間切れになるのは許容する仕様）。
-class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
+class _GameScreenState extends State<GameScreen>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  /// 「短時間」表示を計るアニメーション。dart:async の Timer は使わない
+  /// — GameSession は Timer を持たずに済み、単体テストは Timer 完走を
+  /// 待つ必要がない。Ticker ベースなので widget テストは
+  /// tester.pump(duration) でそのまま時間を進められる。
+  late final AnimationController _rejectionMessageController;
+
+  /// 直近に「短時間」表示タイマーを張り直した拒否の rejectionSeq。
+  /// 同じ拒否に対して forward(from: 0) を重ねて呼ばないためのガード。
+  int _handledRejectionSeq = 0;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _rejectionMessageController = AnimationController(
+      vsync: this,
+      duration: kRejectionMessageDuration,
+    )..addStatusListener(_onRejectionMessageStatusChanged);
+    widget.session.addListener(_syncRejectionAutoDismiss);
+    _syncRejectionAutoDismiss();
   }
 
   @override
   void dispose() {
+    widget.session.removeListener(_syncRejectionAutoDismiss);
+    _rejectionMessageController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -59,6 +84,30 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     } else {
       widget.session.pauseTimer();
     }
+  }
+
+  void _onRejectionMessageStatusChanged(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      // 選択中のカード・演算子は維持したまま、メッセージだけを消す
+      // （仕様 §2.5: 拒否後もユーザーは B を選び直すだけでよい）。
+      widget.session.dismissRejection();
+    }
+  }
+
+  /// 新しい拒否が起きるたびに「短時間」タイマーを最初からやり直す。
+  /// 拒否が（合成成功やヒントなど）他の経路で先に消えていれば止める。
+  ///
+  /// GameSession.rejectionSeq は拒否のたびに単調増加するので、同じ
+  /// カード・同じ理由の拒否が連続しても新しいタイマーとして扱える。
+  void _syncRejectionAutoDismiss() {
+    final session = widget.session;
+    if (session.lastRejection == null) {
+      _rejectionMessageController.stop();
+      return;
+    }
+    if (session.rejectionSeq == _handledRejectionSeq) return;
+    _handledRejectionSeq = session.rejectionSeq;
+    _rejectionMessageController.forward(from: 0);
   }
 
   @override
@@ -102,6 +151,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                   selectedId: session.selectedCardId,
                   highlightedIds: highlighted,
                   onTapCard: session.tapCard,
+                  shakeCardId: session.lastRejectedCardId,
+                  shakeSignal: session.rejectionSeq,
                 ),
               ),
               _notice(theme),

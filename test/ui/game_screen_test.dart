@@ -67,6 +67,23 @@ void main() {
     ];
   }
 
+  /// The on-screen center of the [DecoratedBox] inside the [CardTile] whose
+  /// card has [value].
+  ///
+  /// Reading a descendant like this (rather than the [CardTile] element's
+  /// own render object, which is the [Transform] the shake animation
+  /// applies) is what actually reflects the shake's horizontal
+  /// displacement: a widget's own render object never reports its own
+  /// paint transform, only what an ancestor transform does to it.
+  Offset cardTileCenter(WidgetTester tester, int value) {
+    final tile = find.byWidgetPredicate(
+      (w) => w is CardTile && w.card.value == value,
+    );
+    final decoratedBox =
+        find.descendant(of: tile, matching: find.byType(DecoratedBox));
+    return tester.getCenter(decoratedBox);
+  }
+
   /// Whether the [TextButton] labelled [label] (as built by ActionBar's
   /// `TextButton.icon`) currently has a live `onPressed`.
   bool actionEnabled(WidgetTester tester, String label) {
@@ -115,6 +132,75 @@ void main() {
     expect(find.byType(CardTile), findsNWidgets(4));
     expect(find.textContaining('割り切れません'), findsOneWidget);
     expect(session.selectedOp, isNotNull);
+  });
+
+  testWidgets(
+      'a refused merge shakes the target card, and an identical repeat '
+      'shakes it again', (tester) async {
+    final session = await pumpGame(tester, [7, 2, 1, 1]);
+    await tapCardWithValue(tester, 7);
+    await tester.tap(find.text('÷'));
+    await tester.pump();
+
+    final restCenter = cardTileCenter(tester, 2);
+
+    // 1 回目の拒否: 7 ÷ 2 は割り切れない。
+    await tapCardWithValue(tester, 2);
+    expect(find.textContaining('割り切れません'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      cardTileCenter(tester, 2).dx,
+      isNot(closeTo(restCenter.dx, 0.01)),
+      reason: 'the target card must be mid-shake shortly after the refusal',
+    );
+
+    // 震えが収まりきるまで進める -- 元の位置にきちんと戻ること。
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(cardTileCenter(tester, 2).dx, closeTo(restCenter.dx, 0.01));
+
+    // 2 回目、内容が前回と全く同じ拒否 -- それでも再び震えること。
+    await tapCardWithValue(tester, 2);
+    expect(find.textContaining('割り切れません'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      cardTileCenter(tester, 2).dx,
+      isNot(closeTo(restCenter.dx, 0.01)),
+      reason: 'an identical repeated refusal must shake again, not sit still '
+          'just because nothing about it changed',
+    );
+
+    // 2 回の拒否を通じて、カードと演算子の選択は維持されたまま。
+    expect(session.selectedCardId, isNotNull);
+    expect(session.selectedOp, Op.div);
+
+    // 震えの Ticker と短時間表示の Ticker を両方収束させてから終了する。
+    await tester.pump(kRejectionMessageDuration);
+  });
+
+  testWidgets(
+      'the rejection message clears itself after a short interval without '
+      'another tap, keeping the selection', (tester) async {
+    final session = await pumpGame(tester, [7, 2, 1, 1]);
+    await tapCardWithValue(tester, 7);
+    await tester.tap(find.text('÷'));
+    await tester.pump();
+    await tapCardWithValue(tester, 2);
+    expect(find.textContaining('割り切れません'), findsOneWidget);
+
+    // 短時間表示の途中ではまだ見えている。
+    await tester.pump(
+      kRejectionMessageDuration - const Duration(milliseconds: 500),
+    );
+    expect(find.textContaining('割り切れません'), findsOneWidget);
+
+    // 経過後は、追加のタップなしに自動で消える。
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(find.textContaining('割り切れません'), findsNothing);
+    expect(session.lastRejection, isNull);
+
+    // 自動消去はカードと演算子の選択を壊さない（仕様 §2.5）。
+    expect(session.selectedCardId, isNotNull);
+    expect(session.selectedOp, Op.div);
   });
 
   testWidgets('hint on a dead end tells the player to step back',

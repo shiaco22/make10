@@ -76,6 +76,64 @@ void main() {
     expect(session.lastRejection, isNotNull);
   });
 
+  test('a rejected merge records which card was the target', () async {
+    session = await sessionWithDigits([7, 2, 1, 1], stats);
+    final seven = session.board.cards[0];
+    final two = session.board.cards[1];
+    session.tapCard(seven.id);
+    session.tapOp(Op.div);
+    session.tapCard(two.id);
+    expect(session.lastRejectedCardId, two.id);
+  });
+
+  test('rejectionSeq advances on every rejection, even an identical repeat',
+      () async {
+    session = await sessionWithDigits([7, 2, 1, 1], stats);
+    final seven = session.board.cards[0];
+    final two = session.board.cards[1];
+    session.tapCard(seven.id);
+    session.tapOp(Op.div);
+    session.tapCard(two.id);
+    final firstSeq = session.rejectionSeq;
+    expect(session.lastRejectedCardId, two.id);
+
+    // 同じ相手へ、選択を崩さずもう一度。理由も対象カードも前回と同じだが、
+    // CardTile が震えを再トリガーできるよう rejectionSeq は必ず変わる。
+    session.tapCard(two.id);
+    expect(session.lastRejection, isNotNull);
+    expect(session.lastRejectedCardId, two.id);
+    expect(session.rejectionSeq, isNot(firstSeq));
+  });
+
+  test('dismissRejection clears the message but keeps the selection',
+      () async {
+    session = await sessionWithDigits([7, 2, 1, 1], stats);
+    final seven = session.board.cards[0];
+    final two = session.board.cards[1];
+    session.tapCard(seven.id);
+    session.tapOp(Op.div);
+    session.tapCard(two.id);
+    expect(session.lastRejection, isNotNull);
+    final seqAtRejection = session.rejectionSeq;
+
+    session.dismissRejection();
+
+    expect(session.lastRejection, isNull);
+    expect(session.lastRejectedCardId, isNull);
+    // 消去はユーザーの選択を壊さない -- 仕様上維持が必須（§2.5）。
+    expect(session.selectedCardId, seven.id);
+    expect(session.selectedOp, Op.div);
+    // 消去自体は新しい拒否ではないので seq は増えない。
+    expect(session.rejectionSeq, seqAtRejection);
+  });
+
+  test('dismissRejection is a no-op when there is nothing to dismiss', () {
+    expect(session.lastRejection, isNull);
+    expect(() => session.dismissRejection(), returnsNormally);
+    expect(session.lastRejection, isNull);
+    expect(session.selectedCardId, isNull);
+  });
+
   test('clearing the board records a solve and moves to cleared phase', () async {
     session = await sessionWithDigits([3, 4, 7, 9], stats);
     playSolution(session);

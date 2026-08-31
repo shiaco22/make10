@@ -45,6 +45,13 @@ class GameSession extends ChangeNotifier {
   int? _selectedCardId;
   Op? _selectedOp;
   RejectionKind? _lastRejection;
+  int? _lastRejectedCardId;
+
+  /// 拒否のたびに単調増加する。値そのものに意味はなく、UI
+  /// （[CardTile] の震えアニメーション）が「新しい拒否が起きた」ことを
+  /// 検知するためだけに使う。同じカード・同じ理由の拒否が連続しても
+  /// 必ず変化するので、震えを毎回再トリガーできる。
+  int _rejectionSeq = 0;
   SolverMove? _hintMove;
   bool _deadEndNotice = false;
   List<SolutionStep> _solutionSteps = const [];
@@ -65,6 +72,13 @@ class GameSession extends ChangeNotifier {
   int? get selectedCardId => _selectedCardId;
   Op? get selectedOp => _selectedOp;
   RejectionKind? get lastRejection => _lastRejection;
+
+  /// 直近の拒否で、合成の相手として選ばれたカード（拒否の「対象カード」）
+  /// の id。[lastRejection] と対で null/非 null が揃う。
+  int? get lastRejectedCardId => _lastRejectedCardId;
+
+  /// [lastRejection] のたびに単調増加する。詳細はフィールドのコメントを参照。
+  int get rejectionSeq => _rejectionSeq;
   SolverMove? get hintMove => _hintMove;
   bool get deadEndNotice => _deadEndNotice;
   List<SolutionStep> get solutionSteps => _solutionSteps;
@@ -100,6 +114,7 @@ class GameSession extends ChangeNotifier {
     _selectedCardId = null;
     _selectedOp = null;
     _lastRejection = null;
+    _lastRejectedCardId = null;
     _hintMove = null;
     _deadEndNotice = false;
     _solutionSteps = const [];
@@ -138,6 +153,7 @@ class GameSession extends ChangeNotifier {
   void tapCard(int id) {
     if (_phase != PhaseKind.playing) return;
     _lastRejection = null;
+    _lastRejectedCardId = null;
     _hintMove = null;
     _deadEndNotice = false;
 
@@ -167,6 +183,13 @@ class GameSession extends ChangeNotifier {
       _lastRejection = (right != null && right.value == 0 && op == Op.div)
           ? RejectionKind.divideByZero
           : RejectionKind.notDivisible;
+      // 震えの対象は「組み合わせようとした相手カード」= 今回タップされた
+      // id。_rejectionSeq は毎回必ず増やす。同じカードへの同じ理由の拒否が
+      // 連続しても値が変わるようにするためで、CardTile はこの変化だけを
+      // 見て震えを再生する（内容が同じでも「新しい拒否イベント」だと
+      // 区別できないと、2 回目以降は何も起きなくなってしまう）。
+      _lastRejectedCardId = id;
+      _rejectionSeq++;
       notifyListeners();
       return;
     }
@@ -194,6 +217,7 @@ class GameSession extends ChangeNotifier {
     if (_selectedCardId == null) return;
     _selectedOp = op;
     _lastRejection = null;
+    _lastRejectedCardId = null;
     notifyListeners();
   }
 
@@ -201,6 +225,21 @@ class GameSession extends ChangeNotifier {
     _selectedCardId = null;
     _selectedOp = null;
     _lastRejection = null;
+    _lastRejectedCardId = null;
+    notifyListeners();
+  }
+
+  /// 拒否メッセージ（と震えの対象カード）だけを消す。選択中のカードと
+  /// 演算子には触れない — その維持は仕様上必須（§2.5）で、「短時間」表示の
+  /// 自動消去がユーザーの選択まで壊してはいけない。
+  ///
+  /// 呼び出し時点で既に拒否理由が別経路（合成成功やヒントなど）で
+  /// クリアされていれば何もしない。UI 側のタイマーは実時間で動くため、
+  /// 発火した時点で状況が変わっている可能性を常に考慮する必要がある。
+  void dismissRejection() {
+    if (_lastRejection == null) return;
+    _lastRejection = null;
+    _lastRejectedCardId = null;
     notifyListeners();
   }
 
@@ -214,6 +253,7 @@ class GameSession extends ChangeNotifier {
     _selectedCardId = null;
     _selectedOp = null;
     _lastRejection = null;
+    _lastRejectedCardId = null;
     _hintMove = null;
     _deadEndNotice = false;
   }
@@ -237,6 +277,7 @@ class GameSession extends ChangeNotifier {
   void requestHint() {
     if (!assistEnabled || _phase != PhaseKind.playing) return;
     _lastRejection = null;
+    _lastRejectedCardId = null;
     _usedHint = true;
     final move = hint(_board.values);
     if (move == null) {

@@ -22,6 +22,13 @@ class BoardView extends StatelessWidget {
   final Set<int> highlightedIds;
   final void Function(int id) onTapCard;
 
+  /// 直近で拒否された合成の対象カード id。null なら震えているカードはない。
+  final int? shakeCardId;
+
+  /// [shakeCardId] のカードへ渡す震えの合図。[GameSession.rejectionSeq] を
+  /// そのまま渡す想定で、値そのものに意味はなく変化だけを見る。
+  final Object? shakeSignal;
+
   static const double _spacing = 12;
   static const double _aspect = CardTile.baseHeight / CardTile.baseWidth;
 
@@ -31,6 +38,8 @@ class BoardView extends StatelessWidget {
     required this.selectedId,
     required this.highlightedIds,
     required this.onTapCard,
+    this.shakeCardId,
+    this.shakeSignal,
   });
 
   @override
@@ -60,6 +69,7 @@ class BoardView extends StatelessWidget {
                   onTap: () => onTapCard(card.id),
                   width: size.width,
                   height: size.height,
+                  shakeSignal: card.id == shakeCardId ? shakeSignal : null,
                 ),
               );
             }

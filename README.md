@@ -47,18 +47,41 @@ configuration for the latter.
 C:\flutter\bin\flutter.bat test
 ```
 
+## The repository path must not contain non-ASCII characters
+
+This repository lives under a Japanese folder name by default
+(`...\ドキュメント\nanaumi\MAKE10`). Two toolchain steps refuse to run there:
+
+- **`flutter analyze`** -- the Dart analysis server mis-frames its LSP
+  messages over stdio and crashes with `FormatException: Unterminated string`.
+- **`flutter build apk`** (and any other Android build) -- the Android Gradle
+  Plugin rejects the path outright: `Your project path contains non-ASCII
+  characters. This will most likely cause the build to fail on Windows.`
+
+`flutter test`, `flutter build web`, `dart run`, and git all work fine where
+it is. A directory junction does **not** help -- it resolves back to the
+original path.
+
+**Move the repository to an ASCII-only path** (for example `C:\dev\make10`)
+if you intend to build for Android. As a stopgap, copy it and build from the
+copy:
+
+```
+git archive HEAD | tar -x -C C:/dev/make10
+cd C:/dev/make10 && C:\flutter\bin\flutter.bat pub get
+```
+
+AGP offers `android.overridePathCheck=true` in `gradle.properties` to silence
+its check, but its own message says the build will most likely fail anyway --
+moving the project is the real fix.
+
 ## Linting
 
 ```
 C:\flutter\bin\flutter.bat analyze
 ```
 
-**`flutter analyze` cannot run from a path containing non-ASCII characters**
-(for example the Japanese folder name this repo lives under by default) --
-the Dart analysis server mis-frames its LSP messages over stdio and crashes.
-A directory junction does not help; it still resolves back to the original
-path. Instead, copy the repository to an ASCII-only path (e.g.
-`C:\Temp\make10`) and run `flutter pub get` then `flutter analyze` there.
+See the path note above -- run this from an ASCII-only checkout.
 
 ## Regenerating `assets/puzzles.json`
 

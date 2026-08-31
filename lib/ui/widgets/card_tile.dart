@@ -90,24 +90,32 @@ class _CardTileState extends State<CardTile>
       background = scheme.tertiaryContainer;
       foreground = scheme.onTertiaryContainer;
     } else {
-      // theme.cardColor は Material 3 では colorScheme.surface に既定される。
-      // Scaffold の背景も同じ colorScheme.surface なので、cardColor のままだと
-      // 通常状態のカードがページと同色になり、カード自体が見えなくなる
-      // (数字テキストとのコントラストはあっても、カードとページのコントラストが
-      // ゼロになる)。
+      // 通常状態: 以前はここを scheme.outline のベタ塗りにしていた
+      // (theme.cardColor が M3 既定で colorScheme.surface になり、
+      // Scaffold の背景と同色でカード自体が見えなくなっていたのが直前の
+      // 不具合。outline はページに対して両テーマとも 3:1 を大きく超える
+      // コントラストを安定して持つため、それを塗りに使えば数字とカードの
+      // 両方が見えるようにはなった)。
       //
-      // surfaceContainerHighest 等の「サーフェスコンテナ」系トークンは M3 の
-      // 設計上 surface とごく近いトーンしか持たない (このシード色では
-      // surfaceContainerHighest でも surface 比コントラスト比は 1.2〜1.5
-      // 程度で、非文字コントラストの目安である 3:1 に届かない)。
-      // outline は「境界のアクセシビリティ用コントラストを確保する」ために
-      // M3 が用意しているロールで、トーン値が seed 色の色相に依らずほぼ
-      // 固定されているため、surface に対して両テーマとも 3:1 を大きく
-      // 超えるコントラストを安定して持つ。コントラストは対称なので、前景に
-      // 同じ surface 自身を使えば数字も同じだけ outline とコントラストが
-      // 取れる (ページの色でカードから数字がくり抜かれたように見える)。
-      background = scheme.outline;
-      foreground = scheme.surface;
+      // ただし outline は彩度の低い middle-grey で、カード全面をそれで
+      // 塗ると「死んだプレースホルダーの板」に見え、淡い tertiaryContainer
+      // のハイライト状態より視覚的に主張しすぎてしまう。
+      //
+      // WCAG 2.1 SC 1.4.11 (Non-text Contrast) が実際に求めているのは
+      // 「コンポーネントの境界」がページに対して 3:1 であることであって、
+      // 塗り自体が 3:1 である必要はない。淡い塗り + はっきりした縁取りは、
+      // 物理的なトランプ札の見え方と同じで、それだけで十分「カードだ」と
+      // 読める。そこで塗りはページに近い明るい surface 系トークン
+      // (surfaceContainerHighest -- Flutter の Card ウィジェットの
+      // filled/elevated バリアントが既定で使うのと同じトーン) に戻し、
+      // 3:1 の担保は下の borderColor 側の outline に移す
+      // (色そのものは変えていないので、以前計測した light 4.27 / dark
+      // 5.87 のコントラスト比がそのまま境界線に引き継がれる)。
+      // onSurface は M3 の設計上 surface 系トークン全般に対して強い
+      // コントラストを持つよう作られているため、数字の可読性は両テーマ
+      // とも保たれる。
+      background = scheme.surfaceContainerHighest;
+      foreground = scheme.onSurface;
     }
 
     final Color borderColor;
@@ -118,8 +126,15 @@ class _CardTileState extends State<CardTile>
       borderColor = scheme.onPrimary;
     } else if (widget.highlighted) {
       borderColor = scheme.tertiary;
-    } else {
+    } else if (widget.selected) {
+      // 選択中 (ハイライト無し): 塗りの primary 自体がページに対し
+      // はっきりしたコントラストを持つ、彩度の高い色なので、縁取りは
+      // 要らない。
       borderColor = Colors.transparent;
+    } else {
+      // 通常状態: 上のとおり淡い塗りだけではページとの境界が曖昧なので、
+      // ここで outline の縁取りを与えて WCAG 1.4.11 の 3:1 を満たす。
+      borderColor = scheme.outline;
     }
 
     return Semantics(

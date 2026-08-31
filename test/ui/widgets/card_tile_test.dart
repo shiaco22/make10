@@ -158,7 +158,7 @@ void main() {
 
         // Fills: normal, selected and highlighted must each be visually
         // distinct from one another.
-        expect(normal.color, scheme.outline);
+        expect(normal.color, scheme.surfaceContainerHighest);
         expect(selected.color, scheme.primary);
         expect(highlighted.color, scheme.tertiaryContainer);
         expect(
@@ -172,7 +172,7 @@ void main() {
         // from plain "selected" by its border instead.
         expect(both.color, selected.color);
 
-        expect(borderColorOf(normal), Colors.transparent);
+        expect(borderColorOf(normal), scheme.outline);
         expect(borderColorOf(selected), Colors.transparent);
         expect(borderColorOf(highlighted), scheme.tertiary);
 
@@ -292,8 +292,8 @@ void main() {
     'dark': Make10App.darkTheme,
   }.entries) {
     testWidgets(
-      "the app's real ${entry.key} theme paints the normal card "
-      'distinguishably from the page behind it',
+      "the app's real ${entry.key} theme paints the normal card with a "
+      'boundary distinguishable from the page behind it',
       (tester) async {
         // Regression test: the normal (unselected) fill used to be painted
         // with `theme.cardColor`, which Material 3 defaults to
@@ -303,6 +303,19 @@ void main() {
         // text stayed legible (it contrasts with the card), but the card
         // itself was invisible against the page: only the selected and
         // highlighted states looked like cards at all.
+        //
+        // The fix that followed painted the fill itself with
+        // `colorScheme.outline` to force 3:1 against the page, but a flat
+        // mid-tone fill of that size reads as a saturated grey slab and
+        // visually outweighs the pastel highlight state. WCAG 2.1 SC
+        // 1.4.11 (Non-text Contrast) only requires a component's
+        // *boundary* to reach 3:1 against adjacent colors, not its fill,
+        // so the current design keeps a light, page-adjacent fill
+        // (`colorScheme.surfaceContainerHighest`) and moves the 3:1
+        // requirement to a drawn border (`colorScheme.outline`) instead --
+        // the same way an outlined Material card, or a physical playing
+        // card's edge against the table, reads as a distinct shape without
+        // its fill having to fight the page for contrast.
         await tester.pumpWidget(MaterialApp(
           theme: entry.value,
           home: Scaffold(
@@ -318,7 +331,9 @@ void main() {
           ),
         ));
 
-        final cardFill = decorationFor(tester, 'normal').color!;
+        final normalDecoration = decorationFor(tester, 'normal');
+        final cardFill = normalDecoration.color!;
+        final cardBorder = borderColorOf(normalDecoration);
 
         // The actually-painted background of the page the card sits on:
         // Scaffold paints it via its own Material(color: ...), so read
@@ -333,32 +348,42 @@ void main() {
         );
         final pageColor = scaffoldMaterial.color!;
 
-        final ratio = _contrastRatio(cardFill, pageColor);
+        final fillRatio = _contrastRatio(cardFill, pageColor);
+        final borderRatio = _contrastRatio(cardBorder, pageColor);
         // Printed unconditionally (not just on failure) so the measured
-        // ratio always shows up in `flutter test` output.
+        // ratios always show up in `flutter test` output.
         // ignore: avoid_print
         print(
           'normal card vs page background contrast (${entry.key}): '
-          'card=$cardFill page=$pageColor ratio=${ratio.toStringAsFixed(3)}',
+          'fill=$cardFill border=$cardBorder page=$pageColor '
+          'fillRatio=${fillRatio.toStringAsFixed(3)} '
+          'borderRatio=${borderRatio.toStringAsFixed(3)}',
         );
 
         expect(
           cardFill,
           isNot(pageColor),
-          reason: 'the normal card must not be painted the exact same '
-              'color as the page behind it (${entry.key} theme)',
+          reason: 'the normal card fill should still read as a distinct, '
+              'if subtle, surface from the page behind it, not collapse '
+              'back onto the exact page color (${entry.key} theme)',
+        );
+        expect(
+          cardBorder,
+          isNot(Colors.transparent),
+          reason: 'the normal card must draw a real, visible border '
+              '(${entry.key} theme)',
         );
         // WCAG 2.1 SC 1.4.11 (Non-text Contrast) sets 3:1 as the minimum
-        // ratio for a UI component's boundary against its adjacent
-        // color(s) -- the same bar already used above for the hint
-        // border. The card's edge against the page is exactly that kind
-        // of boundary, so the same threshold applies here.
+        // ratio for a UI component's *boundary* against its adjacent
+        // color(s) -- it does not require the fill itself to reach 3:1.
+        // A light fill with a clearly drawn, high-contrast border reads
+        // as legibly "card-shaped" as a flat high-contrast fill would,
+        // so it is the border -- not the fill -- that must clear the bar.
         expect(
-          ratio,
+          borderRatio,
           greaterThan(3.0),
-          reason: 'the normal (unselected) card must be visibly distinct '
-              'from the page it sits on, not just from the text drawn on '
-              'top of it (${entry.key} theme)',
+          reason: 'the normal (unselected) card\'s border must be visibly '
+              'distinct from the page it sits on (${entry.key} theme)',
         );
       },
     );

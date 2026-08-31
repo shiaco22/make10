@@ -93,6 +93,24 @@ void main() {
     return tester.widget<TextButton>(finder).onPressed != null;
   }
 
+  /// The actually-painted background [Material] color of the operator
+  /// bar's button for [op] (found via its symbol text, e.g. '+').
+  Color operatorButtonColor(WidgetTester tester, Op op) {
+    final buttonFinder = find.widgetWithText(FilledButton, opSymbol(op));
+    final materialFinder = find
+        .descendant(of: buttonFinder, matching: find.byType(Material))
+        .first;
+    return tester.widget<Material>(materialFinder).color!;
+  }
+
+  /// Whether the operator bar currently marks [op] the same way it marks
+  /// a pending operator selection (filled with `colorScheme.primary`).
+  bool operatorIsMarked(WidgetTester tester, Op op) {
+    final scheme =
+        Theme.of(tester.element(find.byType(GameScreen))).colorScheme;
+    return operatorButtonColor(tester, op) == scheme.primary;
+  }
+
   testWidgets('shows four cards at the start', (tester) async {
     await pumpGame(tester, [3, 4, 7, 9]);
     expect(find.byType(CardTile), findsNWidgets(4));
@@ -382,6 +400,152 @@ void main() {
     await tester.pump();
     expect(session.hintMove, isNotNull);
     expect(session.hintFormula, isNull);
+  });
+
+  testWidgets('a single hint press does not mark any operator in the bar',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+
+    expect(session.hintMove, isNotNull);
+    expect(session.hintFormula, isNull);
+    for (final op in Op.values) {
+      expect(
+        operatorIsMarked(tester, op),
+        isFalse,
+        reason: 'level 1 narrows to two cards without giving the '
+            'operator away; the bar must not mark one',
+      );
+    }
+  });
+
+  testWidgets(
+      'a second hint press marks exactly the operator shown in the '
+      'formula', (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+
+    final formula = session.hintFormula!;
+    expect(find.text(formula.toString()), findsOneWidget);
+    expect(operatorIsMarked(tester, formula.op), isTrue);
+    for (final other in Op.values.where((o) => o != formula.op)) {
+      expect(
+        operatorIsMarked(tester, other),
+        isFalse,
+        reason: 'only the hinted operator should be marked',
+      );
+    }
+  });
+
+  testWidgets('the hinted operator mark clears after a merge',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    final op = session.hintFormula!.op;
+    expect(operatorIsMarked(tester, op), isTrue);
+
+    final move = session.hintMove!;
+    final left = session.board.cards[move.leftIndex];
+    final right = session.board.cards[move.rightIndex];
+    session.tapCard(left.id);
+    session.tapOp(move.op);
+    session.tapCard(right.id);
+    await tester.pump();
+
+    expect(operatorIsMarked(tester, op), isFalse);
+  });
+
+  testWidgets('the hinted operator mark clears after undo', (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    final op = session.hintFormula!.op;
+    expect(operatorIsMarked(tester, op), isTrue);
+
+    session.undo();
+    await tester.pump();
+
+    expect(operatorIsMarked(tester, op), isFalse);
+  });
+
+  testWidgets('the hinted operator mark clears after resetBoard',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    final op = session.hintFormula!.op;
+    expect(operatorIsMarked(tester, op), isTrue);
+
+    session.resetBoard();
+    await tester.pump();
+
+    expect(operatorIsMarked(tester, op), isFalse);
+  });
+
+  testWidgets('the hinted operator mark clears when a new puzzle is dealt',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    final op = session.hintFormula!.op;
+    expect(operatorIsMarked(tester, op), isTrue);
+
+    session.skip();
+    await tester.pump();
+
+    expect(operatorIsMarked(tester, op), isFalse);
+  });
+
+  testWidgets(
+      'a pending operator selection wins the mark over a different '
+      'hinted operator', (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+
+    // Peek at what the hint would suggest for this board. tapCard below
+    // clears it before a deliberately different operator is made pending.
+    session.requestHint();
+    final hintedOp = session.hintMove!.op;
+    final pendingOp = Op.values.firstWhere((o) => o != hintedOp);
+
+    session.tapCard(session.board.cards.first.id);
+    session.tapOp(pendingOp);
+    await tester.pump();
+
+    // Escalate the hint to level 2. requestHint never touches the pending
+    // card/operator selection, so pendingOp still stands throughout.
+    session.requestHint();
+    session.requestHint();
+    await tester.pump();
+
+    expect(session.selectedOp, pendingOp);
+    expect(session.hintFormula!.op, hintedOp);
+
+    expect(
+      operatorIsMarked(tester, pendingOp),
+      isTrue,
+      reason: "the pending operator is the player's own live choice and "
+          'must keep the mark',
+    );
+    expect(
+      operatorIsMarked(tester, hintedOp),
+      isFalse,
+      reason: 'a merely-suggested operator must not also be marked while '
+          'a different operator is genuinely pending, or two buttons '
+          'would look simultaneously "selected"',
+    );
   });
 
   testWidgets('showing the answer locks the board', (tester) async {

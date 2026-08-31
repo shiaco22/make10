@@ -159,6 +159,7 @@ class _GameScreenState extends State<GameScreen>
               const SizedBox(height: 12),
               OperatorBar(
                 selected: session.selectedOp,
+                hintedOp: session.hintFormula?.op,
                 onTap: session.tapOp,
               ),
               const SizedBox(height: 12),

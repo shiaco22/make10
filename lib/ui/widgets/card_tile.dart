@@ -8,7 +8,9 @@ import '../../domain/board.dart';
 ///
 /// サイズは呼び出し側（[BoardView]）が利用可能な余白から計算して渡す。
 /// [baseWidth] × [baseHeight] (88×112) が既定値であり、同時に
-/// BoardView 側での上限（タブレットで拡大しすぎない）としても使われる。
+/// BoardView 側での電話サイズの上限としても使われる。タブレットでは
+/// BoardView がこの既定値に [uiScale] を掛けた値を上限として渡すため、
+/// 実際に描かれるカードはこれより大きくなり得る。
 ///
 /// [shakeSignal] が変化するたびに横揺れアニメーションを再生する
 /// （拒否された合成の対象カードであることを表す。仕様 §2.5 / §10）。
@@ -25,6 +27,19 @@ class CardTile extends StatefulWidget {
   final double height;
   final Object? shakeSignal;
 
+  /// タブレットなど大きな画面での拡大率 ([BoardView] が [uiScale] から
+  /// 渡す)。カード自体の当たり判定・枠は常に [width] / [height] で決まる
+  /// ので、これは中の数字の文字サイズと枠線の太さだけに効く。
+  ///
+  /// 既定の 1.0 では今日の見た目 (fontSize 40, 枠線 3) と完全に一致する。
+  /// [width] / [height] は「1 行に収まる」ための逆算で電話サイズでも
+  /// 88×112 未満に小さくなることがあり、それをそのまま文字サイズの基準に
+  /// すると電話でも常に FittedBox 頼みの縮小がかかってしまう。画面の
+  /// クラス（電話かタブレットか）だけで決まるこの値を別に持つことで、
+  /// 電話では今日と同じ固定 40px を基準にしたまま、タブレットでだけ
+  /// 数字を大きくできる。
+  final double scale;
+
   /// カードの既定サイズ。88:112 の縦横比を保つ。
   static const double baseWidth = 88;
   static const double baseHeight = 112;
@@ -37,6 +52,7 @@ class CardTile extends StatefulWidget {
     required this.onTap,
     this.width = baseWidth,
     this.height = baseHeight,
+    this.scale = 1.0,
     this.shakeSignal,
   });
 
@@ -171,7 +187,7 @@ class _CardTileState extends State<CardTile>
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: borderColor,
-                width: 3,
+                width: 3 * widget.scale,
               ),
             ),
             alignment: Alignment.center,
@@ -182,7 +198,7 @@ class _CardTileState extends State<CardTile>
                 child: Text(
                   '${widget.card.value}',
                   style: TextStyle(
-                    fontSize: 40,
+                    fontSize: 40 * widget.scale,
                     fontWeight: FontWeight.bold,
                     color: foreground,
                   ),

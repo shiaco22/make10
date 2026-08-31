@@ -6,7 +6,9 @@ import 'package:make10/domain/operation.dart';
 import 'package:make10/domain/solver.dart';
 import 'package:make10/game/game_session.dart';
 import 'package:make10/ui/game_screen.dart';
+import 'package:make10/ui/widgets/board_view.dart';
 import 'package:make10/ui/widgets/card_tile.dart';
+import 'package:make10/ui/widgets/responsive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../helpers/fixtures.dart';
@@ -604,11 +606,40 @@ void main() {
   });
 
   testWidgets(
-    'at a tablet width the cards stay capped at their max size and centred',
+    'at a tablet width the cards grow past the phone cap, scaled by '
+    'uiScale, and stay centred as one group',
     (tester) async {
+      // Superseded test: this used to pin cards to a flat 88x112 cap on
+      // any wide screen ("tablets must not grow"). The product ask
+      // reversed that -- tablets must grow -- so pinning to the old flat
+      // numbers would now assert the very regression this feature fixes.
+      // It is kept (rather than deleted) because the shape of the check
+      // still matters: cards must reach a real cap (not grow unbounded)
+      // and the row must stay centred as one visual group. The cap itself
+      // is now `uiScale(context)` rather than a bare literal.
       const screenWidth = 834.0;
+      const screenHeight = 1112.0;
       await pumpGameAtSize(
-          tester, [3, 4, 7, 9], const Size(screenWidth, 1112));
+          tester, [3, 4, 7, 9], const Size(screenWidth, screenHeight));
+
+      // uiScale is a pure function of the viewport. Reading it here from
+      // the pumped tree's own BuildContext predicts the expected cap
+      // without hard-coding lib/ui/widgets/responsive.dart's scale curve
+      // as a second copy that could silently drift out of sync. What this
+      // test actually exercises is everything downstream of that number:
+      // BoardView threading the scaled cap through its
+      // ConstrainedBox/LayoutBuilder math and Row layout, and CardTile
+      // actually painting at that size.
+      final scale = uiScale(tester.element(find.byType(BoardView)));
+      expect(
+        scale,
+        greaterThan(1.2),
+        reason: '834 logical pixels is comfortably past the 600 tablet '
+            'breakpoint and should already be a meaningful way into the '
+            'scale range',
+      );
+      final expectedWidth = CardTile.baseWidth * scale;
+      final expectedHeight = CardTile.baseHeight * scale;
 
       final rects = cardRectsFor(tester, [3, 4, 7, 9]);
       expect(rects, hasLength(4));
@@ -616,11 +647,12 @@ void main() {
       for (final r in rects) {
         expect(
           r.width,
-          closeTo(88, 0.5),
-          reason: 'cards must reach, but not exceed, their 88-wide maximum '
-              'on a tablet-sized screen',
+          closeTo(expectedWidth, 0.5),
+          reason: 'cards must reach, but not exceed, their scaled maximum '
+              '(the phone base of 88 times this viewport\'s uiScale) on a '
+              'tablet-sized screen',
         );
-        expect(r.height, closeTo(112, 0.5));
+        expect(r.height, closeTo(expectedHeight, 0.5));
       }
 
       final rowLeft =
@@ -632,6 +664,12 @@ void main() {
         rowCenter,
         closeTo(screenWidth / 2, 1.0),
         reason: 'the row of cards must stay horizontally centred',
+      );
+      expect(
+        rowRight - rowLeft,
+        lessThan(screenWidth * 0.8),
+        reason: 'the four cards must still read as one grouped cluster, '
+            'not spread across the tablet-sized screen',
       );
 
       expect(tester.takeException(), isNull);

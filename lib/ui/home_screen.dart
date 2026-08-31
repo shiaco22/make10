@@ -11,6 +11,11 @@ import 'difficulty_screen.dart';
 import 'game_screen.dart';
 import 'stats_screen.dart';
 import 'time_attack_screen.dart';
+import 'widgets/responsive.dart';
+
+/// 電話での主要ボタンの大きさ。タブレットでは [uiScale] を掛けて拡大する。
+const double _kButtonWidth = 240;
+const double _kButtonHeight = 56;
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -102,54 +107,67 @@ class HomeScreen extends ConsumerWidget {
           data: (puzzles) => statsAsync.when(
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, _) => Center(child: Text('$e')),
-            data: (stats) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('MAKE 10',
-                      style: Theme.of(context).textTheme.displayMedium),
-                  const SizedBox(height: 48),
-                  SizedBox(
-                    width: 240,
-                    height: 56,
-                    child: FilledButton(
-                      onPressed: () async {
-                        final d =
-                            await _pickDifficulty(context, 'プラクティス');
-                        if (d != null && context.mounted) {
-                          _startPractice(context, puzzles, stats, d);
-                        }
-                      },
-                      child: const Text('プラクティス'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: 240,
-                    height: 56,
-                    child: FilledButton(
-                      onPressed: () async {
-                        final d =
-                            await _pickDifficulty(context, 'タイムアタック');
-                        if (d != null && context.mounted) {
-                          _startTimeAttack(context, puzzles, stats, d);
-                        }
-                      },
-                      child: const Text('タイムアタック'),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => StatsScreen(stats: stats),
+            data: (stats) {
+              // タブレットでは主要ボタンを拡大する。電話 (scale == 1.0)
+              // では幅・高さともに今日と同じ 240x56 / style は null のまま
+              // (FilledButton の見た目を一切変えない)。
+              final scale = uiScale(context);
+              final buttonStyle = scale > 1.0
+                  ? FilledButton.styleFrom(
+                      textStyle: TextStyle(fontSize: 18 * scale),
+                    )
+                  : null;
+              return Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('MAKE 10',
+                        style: Theme.of(context).textTheme.displayMedium),
+                    const SizedBox(height: 48),
+                    SizedBox(
+                      width: _kButtonWidth * scale,
+                      height: _kButtonHeight * scale,
+                      child: FilledButton(
+                        style: buttonStyle,
+                        onPressed: () async {
+                          final d =
+                              await _pickDifficulty(context, 'プラクティス');
+                          if (d != null && context.mounted) {
+                            _startPractice(context, puzzles, stats, d);
+                          }
+                        },
+                        child: const Text('プラクティス'),
                       ),
                     ),
-                    child: const Text('統計'),
-                  ),
-                ],
-              ),
-            ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: _kButtonWidth * scale,
+                      height: _kButtonHeight * scale,
+                      child: FilledButton(
+                        style: buttonStyle,
+                        onPressed: () async {
+                          final d =
+                              await _pickDifficulty(context, 'タイムアタック');
+                          if (d != null && context.mounted) {
+                            _startTimeAttack(context, puzzles, stats, d);
+                          }
+                        },
+                        child: const Text('タイムアタック'),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    TextButton(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => StatsScreen(stats: stats),
+                        ),
+                      ),
+                      child: const Text('統計'),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ),
       ),

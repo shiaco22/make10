@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/operation.dart';
+import 'responsive.dart';
 
 class OperatorBar extends StatelessWidget {
   final Op? selected;
@@ -15,6 +16,12 @@ class OperatorBar extends StatelessWidget {
 
   final void Function(Op op) onTap;
 
+  /// 電話での、ボタン 1 個あたりの一辺・左右パディング・記号の文字サイズ。
+  /// タブレットでは [uiScale] を掛けて拡大する。
+  static const double _baseButtonSize = 64;
+  static const double _baseHorizontalPadding = 6;
+  static const double _baseFontSize = 28;
+
   const OperatorBar({
     super.key,
     required this.selected,
@@ -25,10 +32,13 @@ class OperatorBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final scale = uiScale(context);
+    final buttonSize = _baseButtonSize * scale;
     // 4 個 x (64px + 左右 6px パディング) = 304px。iPhone SE 級の 320 幅では
     // 本体の Padding(16) を引くと 288px しか残らず、素の Row では右に
     // 16px はみ出す。FittedBox で「収まらない時だけ」縮小し、収まる幅
-    // (例: 375px) ではそのままのサイズで描画する。
+    // (例: 375px) ではそのままのサイズで描画する。タブレットでボタン自体が
+    // 大きくなっても、この仕組みは変えず（万一の保険として）そのまま使う。
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Row(
@@ -36,10 +46,12 @@ class OperatorBar extends StatelessWidget {
         children: [
           for (final op in Op.values)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              padding: EdgeInsets.symmetric(
+                horizontal: _baseHorizontalPadding * scale,
+              ),
               child: SizedBox(
-                width: 64,
-                height: 64,
+                width: buttonSize,
+                height: buttonSize,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
                     padding: EdgeInsets.zero,
@@ -53,7 +65,7 @@ class OperatorBar extends StatelessWidget {
                   onPressed: () => onTap(op),
                   child: Text(
                     opSymbol(op),
-                    style: const TextStyle(fontSize: 28),
+                    style: TextStyle(fontSize: _baseFontSize * scale),
                   ),
                 ),
               ),

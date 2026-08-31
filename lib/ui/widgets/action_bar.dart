@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'responsive.dart';
+
 class ActionBar extends StatelessWidget {
   final bool canUndo;
 
@@ -35,37 +37,108 @@ class ActionBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      alignment: WrapAlignment.center,
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        TextButton.icon(
-          onPressed: (interactionEnabled && canUndo) ? onUndo : null,
-          icon: const Icon(Icons.undo),
-          label: const Text('戻す'),
-        ),
-        TextButton.icon(
-          onPressed: (interactionEnabled && canUndo) ? onReset : null,
-          icon: const Icon(Icons.refresh),
-          label: const Text('最初から'),
-        ),
-        TextButton.icon(
-          onPressed: assistEnabled ? onHint : null,
-          icon: const Icon(Icons.lightbulb_outline),
-          label: const Text('ヒント'),
-        ),
-        TextButton.icon(
-          onPressed: assistEnabled ? onAnswer : null,
-          icon: const Icon(Icons.visibility_outlined),
-          label: const Text('答え'),
-        ),
-        TextButton.icon(
-          onPressed: interactionEnabled ? onSkip : null,
-          icon: const Icon(Icons.skip_next),
-          label: const Text('スキップ'),
-        ),
-      ],
+    final scale = uiScale(context);
+
+    // 電話 (scale == 1.0) では今日と全く同じ Wrap + 既定サイズの
+    // TextButton.icon を描く。5 個のボタンは狭い幅では 2 行に折り返る
+    // (それ自体は問題ない -- 折り返しても全ボタンは押せる)。
+    if (scale <= 1.0) {
+      return Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          TextButton.icon(
+            onPressed: (interactionEnabled && canUndo) ? onUndo : null,
+            icon: const Icon(Icons.undo),
+            label: const Text('戻す'),
+          ),
+          TextButton.icon(
+            onPressed: (interactionEnabled && canUndo) ? onReset : null,
+            icon: const Icon(Icons.refresh),
+            label: const Text('最初から'),
+          ),
+          TextButton.icon(
+            onPressed: assistEnabled ? onHint : null,
+            icon: const Icon(Icons.lightbulb_outline),
+            label: const Text('ヒント'),
+          ),
+          TextButton.icon(
+            onPressed: assistEnabled ? onAnswer : null,
+            icon: const Icon(Icons.visibility_outlined),
+            label: const Text('答え'),
+          ),
+          TextButton.icon(
+            onPressed: interactionEnabled ? onSkip : null,
+            icon: const Icon(Icons.skip_next),
+            label: const Text('スキップ'),
+          ),
+        ],
+      );
+    }
+
+    // タブレット: ボタン自体を拡大しつつ、5 個を 1 行に収める。
+    //
+    // Wrap のままボタンだけ拡大すると、幅の狭いタブレット (ポートレートの
+    // iPad mini/Air 相当) で再び 2 行に折り返りかねない。ここでは明示的に
+    // 1 行の Row にし、万一それでも収まらない画面幅が来た場合の保険として
+    // FittedBox(scaleDown) で包む -- OperatorBar と同じ考え方で、収まる
+    // 範囲では拡大したサイズのまま描き、収まらない時だけ縮める。
+    final style = TextButton.styleFrom(
+      textStyle: TextStyle(fontSize: 16 * scale),
+      padding: EdgeInsets.symmetric(
+        horizontal: 16 * scale,
+        vertical: 12 * scale,
+      ),
+      minimumSize: Size(44 * scale, 44 * scale),
+    );
+    final iconSize = 24 * scale;
+    final buttons = [
+      TextButton.icon(
+        style: style,
+        onPressed: (interactionEnabled && canUndo) ? onUndo : null,
+        icon: Icon(Icons.undo, size: iconSize),
+        label: const Text('戻す'),
+      ),
+      TextButton.icon(
+        style: style,
+        onPressed: (interactionEnabled && canUndo) ? onReset : null,
+        icon: Icon(Icons.refresh, size: iconSize),
+        label: const Text('最初から'),
+      ),
+      TextButton.icon(
+        style: style,
+        onPressed: assistEnabled ? onHint : null,
+        icon: Icon(Icons.lightbulb_outline, size: iconSize),
+        label: const Text('ヒント'),
+      ),
+      TextButton.icon(
+        style: style,
+        onPressed: assistEnabled ? onAnswer : null,
+        icon: Icon(Icons.visibility_outlined, size: iconSize),
+        label: const Text('答え'),
+      ),
+      TextButton.icon(
+        style: style,
+        onPressed: interactionEnabled ? onSkip : null,
+        icon: Icon(Icons.skip_next, size: iconSize),
+        label: const Text('スキップ'),
+      ),
+    ];
+
+    final spacingWidth = 12 * scale;
+    final spaced = <Widget>[];
+    for (var i = 0; i < buttons.length; i++) {
+      if (i > 0) spaced.add(SizedBox(width: spacingWidth));
+      spaced.add(buttons[i]);
+    }
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: spaced,
+      ),
     );
   }
 }

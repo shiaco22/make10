@@ -90,10 +90,24 @@ class _CardTileState extends State<CardTile>
       background = scheme.tertiaryContainer;
       foreground = scheme.onTertiaryContainer;
     } else {
-      // cardColor は Material のバージョン差に影響されない。
-      // surfaceContainerHighest 等の新しいトークンは SDK 依存になるため使わない。
-      background = theme.cardColor;
-      foreground = scheme.onSurface;
+      // theme.cardColor は Material 3 では colorScheme.surface に既定される。
+      // Scaffold の背景も同じ colorScheme.surface なので、cardColor のままだと
+      // 通常状態のカードがページと同色になり、カード自体が見えなくなる
+      // (数字テキストとのコントラストはあっても、カードとページのコントラストが
+      // ゼロになる)。
+      //
+      // surfaceContainerHighest 等の「サーフェスコンテナ」系トークンは M3 の
+      // 設計上 surface とごく近いトーンしか持たない (このシード色では
+      // surfaceContainerHighest でも surface 比コントラスト比は 1.2〜1.5
+      // 程度で、非文字コントラストの目安である 3:1 に届かない)。
+      // outline は「境界のアクセシビリティ用コントラストを確保する」ために
+      // M3 が用意しているロールで、トーン値が seed 色の色相に依らずほぼ
+      // 固定されているため、surface に対して両テーマとも 3:1 を大きく
+      // 超えるコントラストを安定して持つ。コントラストは対称なので、前景に
+      // 同じ surface 自身を使えば数字も同じだけ outline とコントラストが
+      // 取れる (ページの色でカードから数字がくり抜かれたように見える)。
+      background = scheme.outline;
+      foreground = scheme.surface;
     }
 
     final Color borderColor;

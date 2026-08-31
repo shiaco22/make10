@@ -243,6 +243,14 @@ class _GameScreenState extends State<GameScreen>
       );
     }
 
+    // ヒントの 2 回目以降の押下: ハイライトに加えて、その 1 手だけを式で
+    // 見せる（答えの全 3 手とは違い、次の一手だけ）。書式は答えの各手
+    // (SolutionStep.toString()) と揃える。
+    final hintFormula = session.hintFormula;
+    if (hintFormula != null) {
+      return Text(hintFormula.toString());
+    }
+
     if (session.missedTarget) {
       return Text(
         '10 になりませんでした',

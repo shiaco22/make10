@@ -317,6 +317,167 @@ void main() {
     expect(session.hintMove, isNull);
   });
 
+  test('the first hint press highlights a move without showing a formula',
+      () {
+    session.requestHint();
+    expect(session.hintMove, isNotNull);
+    expect(session.hintFormula, isNull);
+  });
+
+  test('a second hint press shows the formula for the exact highlighted move',
+      () {
+    session.requestHint();
+    final move = session.hintMove!;
+
+    session.requestHint();
+
+    expect(session.hintMove, isNotNull);
+    expect(session.hintMove!.leftIndex, move.leftIndex);
+    expect(session.hintMove!.rightIndex, move.rightIndex);
+    expect(session.hintMove!.op, move.op);
+    final left = session.board.cards[move.leftIndex].value;
+    final right = session.board.cards[move.rightIndex].value;
+    expect(
+      session.hintFormula.toString(),
+      '$left ${opSymbol(move.op)} $right = ${move.result}',
+    );
+  });
+
+  test('a third hint press does not escalate further or misbehave', () {
+    session.requestHint();
+    session.requestHint();
+    final formulaAfterSecondPress = session.hintFormula.toString();
+
+    expect(() => session.requestHint(), returnsNormally);
+
+    expect(session.hintMove, isNotNull);
+    expect(session.hintFormula, isNotNull);
+    expect(session.hintFormula.toString(), formulaAfterSecondPress);
+  });
+
+  test('repeated hint presses on a dead end never produce a formula',
+      () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    // 3*7=21 に進むと 4,9,21 になり、ここから 10 は作れない（詰み）。
+    final three = session.board.cards.firstWhere((c) => c.value == 3);
+    final seven = session.board.cards.firstWhere((c) => c.value == 7);
+    session.tapCard(three.id);
+    session.tapOp(Op.mul);
+    session.tapCard(seven.id);
+
+    session.requestHint();
+    expect(session.deadEndNotice, isTrue);
+    expect(session.hintMove, isNull);
+    expect(session.hintFormula, isNull);
+
+    // 2 回目、3 回目を押しても壊れず、式は出ない（見せる手が無いため）。
+    expect(() => session.requestHint(), returnsNormally);
+    expect(session.deadEndNotice, isTrue);
+    expect(session.hintMove, isNull);
+    expect(session.hintFormula, isNull);
+
+    expect(() => session.requestHint(), returnsNormally);
+    expect(session.deadEndNotice, isTrue);
+    expect(session.hintFormula, isNull);
+  });
+
+  test('hint escalation resets when a new puzzle is dealt', () {
+    session.requestHint();
+    session.requestHint();
+    expect(session.hintFormula, isNotNull);
+
+    session.nextPuzzle();
+    expect(session.hintMove, isNull);
+    expect(session.hintFormula, isNull);
+
+    session.requestHint();
+    expect(session.hintMove, isNotNull);
+    expect(
+      session.hintFormula,
+      isNull,
+      reason: 'the first press on a new puzzle must not start escalated',
+    );
+  });
+
+  test('hint escalation resets after performing a merge', () {
+    session.requestHint();
+    session.requestHint();
+    expect(session.hintFormula, isNotNull);
+
+    final move = session.hintMove!;
+    final left = session.board.cards[move.leftIndex];
+    final right = session.board.cards[move.rightIndex];
+    session.tapCard(left.id);
+    session.tapOp(move.op);
+    session.tapCard(right.id);
+    expect(session.hintMove, isNull);
+
+    session.requestHint();
+    expect(
+      session.hintFormula,
+      isNull,
+      reason: 'the first press after a merge must not start escalated',
+    );
+  });
+
+  test('hint escalation resets after undo', () async {
+    // 固定の digits を使う: setUp のデフォルト session はシャッフルされるため、
+    // cards[0]+cards[1] が必ず解ける保証がない（詰みだとヒントが出せない）。
+    // [3,4,7,9] は 3+4=7 のあと [7,9,7] が 7÷7=1, 1+9=10 で解けると確認済み。
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    session.requestHint();
+    session.requestHint();
+    expect(session.hintFormula, isNotNull);
+
+    session.undo();
+    expect(session.hintMove, isNull);
+    expect(session.hintFormula, isNull);
+
+    session.requestHint();
+    expect(
+      session.hintFormula,
+      isNull,
+      reason: 'the first press after an undo must not start escalated',
+    );
+  });
+
+  test('hint escalation resets after resetBoard', () async {
+    // 固定の digits を使う理由は上の undo のテストと同じ。
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    session.tapCard(session.board.cards[0].id);
+    session.tapOp(Op.add);
+    session.tapCard(session.board.cards[1].id);
+    session.requestHint();
+    session.requestHint();
+    expect(session.hintFormula, isNotNull);
+
+    session.resetBoard();
+    expect(session.hintMove, isNull);
+    expect(session.hintFormula, isNull);
+
+    session.requestHint();
+    expect(
+      session.hintFormula,
+      isNull,
+      reason: 'the first press after a resetBoard must not start escalated',
+    );
+  });
+
+  test('repeated hint presses before solving record hint usage only once',
+      () async {
+    session = await sessionWithDigits([3, 4, 7, 9], stats);
+    session.requestHint();
+    session.requestHint();
+    session.requestHint();
+    playSolution(session);
+    await Future<void>.delayed(Duration.zero);
+    expect(stats.practice(Difficulty.normal).solved, 1);
+    expect(stats.practice(Difficulty.normal).hintUsed, 1);
+  });
+
   test('showAnswer locks the board and records the event', () async {
     session.showAnswer();
     expect(session.phase, PhaseKind.answerShown);

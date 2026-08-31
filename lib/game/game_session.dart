@@ -54,6 +54,15 @@ class GameSession extends ChangeNotifier {
   int _rejectionSeq = 0;
   SolverMove? _hintMove;
   bool _deadEndNotice = false;
+
+  /// ヒントを連続で押したときに、直近の [_hintMove] を式でも見せるか。
+  ///
+  /// 1 回目の requestHint はハイライトのみ (false)。同じ盤面のまま
+  /// 2 回目を押すと true になり、以降は盤面が変わるまで true のまま
+  /// （3 回目以降も同じ式を見せ続けるだけで、それ以上は何も起きない）。
+  /// リセットのタイミングは [_hintMove] / [_deadEndNotice] と常に揃える
+  /// （_deal・tapCard の先頭・_clearTransientState の 3 箇所）。
+  bool _hintEscalated = false;
   List<SolutionStep> _solutionSteps = const [];
   bool _usedHint = false;
   Stopwatch _stopwatch = Stopwatch();
@@ -90,6 +99,20 @@ class GameSession extends ChangeNotifier {
   int get rejectionSeq => _rejectionSeq;
   SolverMove? get hintMove => _hintMove;
   bool get deadEndNotice => _deadEndNotice;
+
+  /// 2 回目以降のヒント押下で見せる、[hintMove] と全く同じ 1 手を表す式。
+  ///
+  /// エスカレーションが起きていない（1 回目の押下のまま）か、そもそも
+  /// ヒントできる手がない（詰み）間は null。[SolutionStep.toString] を
+  /// 使うので、答え（[solutionSteps]）と同じ書式・同じ演算子記号になる。
+  SolutionStep? get hintFormula {
+    final move = _hintMove;
+    if (!_hintEscalated || move == null) return null;
+    final left = _board.cards[move.leftIndex].value;
+    final right = _board.cards[move.rightIndex].value;
+    return SolutionStep(left, right, move.op, move.result);
+  }
+
   List<SolutionStep> get solutionSteps => _solutionSteps;
 
   /// 盤面が 1 枚になったが 10 ではない状態。UI が案内を出す。
@@ -130,6 +153,7 @@ class GameSession extends ChangeNotifier {
     _lastRejectedCardId = null;
     _hintMove = null;
     _deadEndNotice = false;
+    _hintEscalated = false;
     _solutionSteps = const [];
     _usedHint = false;
     _outcomeRecorded = false;
@@ -169,6 +193,7 @@ class GameSession extends ChangeNotifier {
     _lastRejectedCardId = null;
     _hintMove = null;
     _deadEndNotice = false;
+    _hintEscalated = false;
 
     if (_selectedCardId == null) {
       _selectedCardId = id;
@@ -274,6 +299,7 @@ class GameSession extends ChangeNotifier {
     _lastRejectedCardId = null;
     _hintMove = null;
     _deadEndNotice = false;
+    _hintEscalated = false;
   }
 
   void undo() {
@@ -299,9 +325,17 @@ class GameSession extends ChangeNotifier {
     _usedHint = true;
     final move = hint(_board.values);
     if (move == null) {
+      // 詰み: エスカレーションできる手が無いので、何度押しても常に false。
       _hintMove = null;
+      _hintEscalated = false;
       _deadEndNotice = isDeadEnd(_board.values);
     } else {
+      // 直前の押下で既に同じ盤面のヒントを見せていたら、2 回目以降として
+      // 式まで見せる。_hintMove は盤面が変わるたびに他の経路
+      // （tapCard 先頭 / _clearTransientState / _deal）で必ず null に
+      // 戻るため、「非 null のまま再び requestHint が呼ばれた」は
+      // 「同じ盤面への再押下」だと判定できる。
+      _hintEscalated = _hintMove != null;
       _hintMove = move;
       _deadEndNotice = false;
     }

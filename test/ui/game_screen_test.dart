@@ -292,6 +292,98 @@ void main() {
     expect(find.textContaining('割り切れません'), findsNothing);
   });
 
+  /// [move] を [SolutionStep] と同じ書式 (`5 ÷ 5 = 1`) の文字列にする。
+  String formulaTextFor(GameSession session, SolverMove move) {
+    final left = session.board.cards[move.leftIndex].value;
+    final right = session.board.cards[move.rightIndex].value;
+    return '$left ${opSymbol(move.op)} $right = ${move.result}';
+  }
+
+  testWidgets('a single hint press highlights the move without a formula',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+
+    final formula = formulaTextFor(session, session.hintMove!);
+    expect(find.text(formula), findsNothing);
+  });
+
+  testWidgets('a second hint press shows the formula for the highlighted move',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    final formula = formulaTextFor(session, session.hintMove!);
+
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+
+    expect(session.hintMove, isNotNull);
+    expect(find.text(formula), findsOneWidget);
+  });
+
+  testWidgets(
+      'a third hint press keeps showing the same formula without breaking',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    final formula = formulaTextFor(session, session.hintMove!);
+
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text(formula), findsOneWidget);
+  });
+
+  testWidgets(
+      'repeated hint presses on a dead end keep showing the notice without '
+      'a formula', (tester) async {
+    await pumpGame(tester, [3, 4, 7, 9]);
+    // 3*7=21 -> [4,9,21] は詰み（実測で確認済み）。
+    await tapCardWithValue(tester, 3);
+    await tester.tap(find.text('×'));
+    await tester.pump();
+    await tapCardWithValue(tester, 7);
+
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    expect(find.textContaining('戻しましょう'), findsOneWidget);
+
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    expect(find.textContaining('戻しましょう'), findsOneWidget);
+  });
+
+  testWidgets(
+      'hint escalation resets after a merge, so the next press starts over',
+      (tester) async {
+    final session = await pumpGame(tester, [3, 4, 7, 9]);
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    expect(session.hintFormula, isNotNull);
+
+    final move = session.hintMove!;
+    final left = session.board.cards[move.leftIndex];
+    final right = session.board.cards[move.rightIndex];
+    session.tapCard(left.id);
+    session.tapOp(move.op);
+    session.tapCard(right.id);
+    await tester.pump();
+
+    await tester.tap(find.text('ヒント'));
+    await tester.pump();
+    expect(session.hintMove, isNotNull);
+    expect(session.hintFormula, isNull);
+  });
+
   testWidgets('showing the answer locks the board', (tester) async {
     await pumpGame(tester, [3, 4, 7, 9]);
     await tester.tap(find.text('答え'));

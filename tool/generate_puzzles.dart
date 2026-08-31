@@ -23,7 +23,36 @@ Iterable<List<int>> allCombinations() sync* {
   }
 }
 
-void main() {
+/// 全解が除算を含むか。全解が除算を要するなら、除算なしでは解けない。
+///
+/// buildPuzzleTable() とテスト（generate_puzzles_test.dart）の双方から
+/// 呼ぶことで、`div` フラグの定義を 1 箇所にする。
+bool allSolutionsUseDivision(List<Solution> solutions) =>
+    solutions.every((s) => s.steps.any((step) => step.op == Op.div));
+
+/// [buildPuzzleTable] の結果。JSON 本体と、main() が stderr に出す要約用の
+/// 内訳をまとめて返す。
+class GeneratedPuzzleTable {
+  final String json;
+  final int totalCombinations;
+  final int solvableCount;
+  final Thresholds thresholds;
+
+  const GeneratedPuzzleTable({
+    required this.json,
+    required this.totalCombinations,
+    required this.solvableCount,
+    required this.thresholds,
+  });
+}
+
+/// assets/puzzles.json の中身を組み立てる。
+///
+/// main()（CLI から `assets/puzzles.json` に書き出す）とテスト
+/// （再生成がコミット済みファイルと一致することを検証する）の両方が
+/// これを呼ぶ。生成ロジックを 1 箇所にまとめることで、テストが
+/// 「生成器の再実装」ではなく「生成器そのもの」を検証できる。
+GeneratedPuzzleTable buildPuzzleTable() {
   // List を Map のキーにすると同一性比較になるので、レコードのリストで持つ。
   final solvable = <({List<int> digits, int count, bool requiresDivision})>[];
   var total = 0;
@@ -35,9 +64,7 @@ void main() {
     solvable.add((
       digits: digits,
       count: solutions.length,
-      // 全解が除算を含むなら、除算なしでは解けない。
-      requiresDivision:
-          solutions.every((s) => s.steps.any((step) => step.op == Op.div)),
+      requiresDivision: allSolutionsUseDivision(solutions),
     ));
   }
 
@@ -63,9 +90,21 @@ void main() {
     'puzzles': puzzles.map((p) => p.toJson()).toList(),
   };
 
-  File('assets/puzzles.json')
-      .writeAsStringSync('${jsonEncode(payload)}\n');
+  return GeneratedPuzzleTable(
+    json: '${jsonEncode(payload)}\n',
+    totalCombinations: total,
+    solvableCount: puzzles.length,
+    thresholds: thresholds,
+  );
+}
 
-  stderr.writeln('total: $total  solvable: ${puzzles.length}  '
-      'thresholds: hard<=${thresholds.hard} normal<=${thresholds.normal}');
+void main() {
+  final table = buildPuzzleTable();
+
+  File('assets/puzzles.json').writeAsStringSync(table.json);
+
+  stderr.writeln('total: ${table.totalCombinations}  '
+      'solvable: ${table.solvableCount}  '
+      'thresholds: hard<=${table.thresholds.hard} '
+      'normal<=${table.thresholds.normal}');
 }

@@ -39,6 +39,13 @@ void main() {
       ),
     );
     expect(hint.onPressed, isNull);
+    final answer = tester.widget<TextButton>(
+      find.ancestor(
+        of: find.text('答え'),
+        matching: find.byType(TextButton),
+      ),
+    );
+    expect(answer.onPressed, isNull);
   });
 
   testWidgets('the clock display follows the session', (tester) async {

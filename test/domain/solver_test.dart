@@ -32,8 +32,21 @@ void main() {
   test('commutative duplicates are collapsed', () {
     // 3+7 と 7+3 は同一解として 1 本に数える。
     // 0,0,3,7 は 3+7 を含むが、順序違いで本数が二重にならない。
+    //
+    // solve() は found.values（canonical をキーにした Map）を返すため、
+    // 返り値の canonical はどのみち構造的に重複しえない
+    // （canonicals.toSet().length == canonicals.length は常に真になる）。
+    // それでは正規化そのものは何も検証できていないので、正規化が実際に
+    // 効いている（小さい方の被演算子が常に先に来る）ことと、
+    // 正規化されていない並び (7+3) が紛れ込んでいないことを直接確認する。
     final canonicals = solve([0, 0, 3, 7]).map((s) => s.canonical).toList();
-    expect(canonicals.toSet().length, canonicals.length);
+    expect(canonicals, contains('(((3+7)+0)+0)'));
+    expect(
+      canonicals.where((c) => c.contains('7+3')),
+      isEmpty,
+      reason: 'a non-canonical "7+3" ordering would mean two orderings of '
+          'the same commutative merge were not collapsed into one entry',
+    );
   });
 
   test('input order does not change the solution count', () {

@@ -83,20 +83,31 @@ void main() {
   });
 
   test(
-      'falls back to empty history for every difficulty when one is not a '
-      'list at all', () async {
-    // Valid JSON, wrong shape: 'easy' is a number instead of a list.
+      'a non-list entry for one difficulty is skipped without discarding '
+      "a well-formed sibling entry (unlike StatsRepository's all-or-"
+      'nothing recovery from a nested cast failure)', () async {
+    // Valid JSON, wrong shape: 'easy' is a number instead of a list, but
+    // 'hard' is a well-formed list. load() checks each difficulty's shape
+    // independently (`if (list is List)`) and only skips the ones that
+    // don't match -- seeding only the malformed key (as this test used to)
+    // made "every difficulty comes back empty" hold trivially, since
+    // 'normal' and 'hard' were never present either way, and it implied a
+    // blanket wipe the code doesn't actually perform. Seeding a good
+    // sibling alongside the bad entry surfaces the real, narrower recovery.
     SharedPreferences.setMockInitialValues({
       'make10.history': jsonEncode({
         'version': 1,
         'easy': 42,
+        'hard': ['1,5,5,5'],
       }),
     });
     final repo = HistoryRepository();
     await repo.load();
-    for (final difficulty in Difficulty.values) {
-      expect(repo.recent(difficulty), isEmpty,
-          reason: 'expected empty history for ${difficulty.key}');
-    }
+    expect(repo.recent(Difficulty.easy), isEmpty,
+        reason: 'expected empty history for the malformed easy entry');
+    expect(repo.recent(Difficulty.normal), isEmpty,
+        reason: 'normal was never present in the seeded payload');
+    expect(repo.recent(Difficulty.hard), ['1,5,5,5'],
+        reason: 'a well-formed sibling entry should still load');
   });
 }

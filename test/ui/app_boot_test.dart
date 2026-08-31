@@ -73,6 +73,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the app supplies both a light and a dark theme from the '
+      'same seed color', (tester) async {
+    await bootToHome(tester);
+
+    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    expect(app.theme, isNotNull);
+    expect(app.darkTheme, isNotNull);
+    expect(app.theme!.brightness, Brightness.light);
+    expect(app.darkTheme!.brightness, Brightness.dark);
+    // ColorScheme.fromSeed is a pure function of its inputs, so an exact
+    // match here pins both themes to the same seed color (Colors.indigo)
+    // -- not just "some" light/dark theme each.
+    expect(
+      app.theme!.colorScheme,
+      ColorScheme.fromSeed(seedColor: Colors.indigo),
+    );
+    expect(
+      app.darkTheme!.colorScheme,
+      ColorScheme.fromSeed(
+        seedColor: Colors.indigo,
+        brightness: Brightness.dark,
+      ),
+    );
+    // themeMode is left at its default (system) so the OS setting decides.
+    expect(app.themeMode, ThemeMode.system);
+  });
+
   testWidgets(
       'home -> practice -> やさしい reaches a board of four cards loaded '
       'through the real asset bundle', (tester) async {

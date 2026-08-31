@@ -196,4 +196,93 @@ void main() {
       },
     );
   }
+
+  testWidgets(
+    "the app's actual seeded dark palette keeps the three card states "
+    'distinguishable, and keeps the combined-state hint border visible',
+    (tester) async {
+      // The generic Brightness.dark case above uses ThemeData(brightness:
+      // dark)'s default (unseeded) scheme. This pins the same checks to the
+      // exact palette lib/ui/app.dart's darkTheme actually produces --
+      // Colors.indigo seeded into ColorScheme.fromSeed -- since a previous
+      // review found the combined selected+highlighted border could go
+      // invisible, and that regression is specific to the real palette.
+      const card = CardItem(0, 9);
+      final darkTheme = ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.indigo,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      );
+      await tester.pumpWidget(MaterialApp(
+        theme: darkTheme,
+        home: Scaffold(
+          body: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CardTile(
+                  key: const ValueKey('normal'),
+                  card: card,
+                  selected: false,
+                  highlighted: false,
+                  onTap: () {},
+                ),
+                CardTile(
+                  key: const ValueKey('selected'),
+                  card: card,
+                  selected: true,
+                  highlighted: false,
+                  onTap: () {},
+                ),
+                CardTile(
+                  key: const ValueKey('highlighted'),
+                  card: card,
+                  selected: false,
+                  highlighted: true,
+                  onTap: () {},
+                ),
+                CardTile(
+                  key: const ValueKey('both'),
+                  card: card,
+                  selected: true,
+                  highlighted: true,
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      ));
+
+      final normal = decorationFor(tester, 'normal');
+      final selected = decorationFor(tester, 'selected');
+      final highlighted = decorationFor(tester, 'highlighted');
+      final both = decorationFor(tester, 'both');
+
+      expect(
+        {normal.color, selected.color, highlighted.color},
+        hasLength(3),
+        reason: 'the real indigo dark palette must still paint normal, '
+            'selected and highlighted with 3 distinct fills',
+      );
+
+      final combinedBorder = borderColorOf(both);
+      expect(
+        combinedBorder,
+        isNot(Colors.transparent),
+        reason: 'a highlighted+selected card must still show a hint border '
+            'in the app\'s real dark palette',
+      );
+      expect(combinedBorder, isNot(both.color));
+      expect(
+        _contrastRatio(combinedBorder, both.color!),
+        greaterThan(3.0),
+        reason: 'the hint border must stay visible against the selected '
+            'fill in the app\'s real dark palette, not just in a generic, '
+            'unseeded dark theme',
+      );
+    },
+  );
 }

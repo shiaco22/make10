@@ -47,6 +47,15 @@ configuration for the latter.
 C:\flutter\bin\flutter.bat test
 ```
 
+## Playing it
+
+The web build is published to GitHub Pages on every push to `main`:
+<https://shiaco22.github.io/make10/>
+
+`.github/workflows/deploy.yml` runs the tests and `flutter analyze`, verifies
+that regenerating `assets/puzzles.json` produces no diff, then builds and
+deploys. A failing check blocks the deploy.
+
 ## The repository path must not contain non-ASCII characters
 
 This repository lives under a Japanese folder name by default

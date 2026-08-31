@@ -1,0 +1,84 @@
+name: Test and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  # Tests and static analysis gate the deploy. `flutter analyze` cannot run on
+  # the maintainer's machine because the working copy lives under a path with
+  # non-ASCII characters, which crashes the Dart analysis server -- see the
+  # README. The runner's path is ASCII, so CI is where analysis actually runs.
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      # The shipped puzzle table is generated from the app's own solver. If a
+      # change to the solver would alter the table, regenerating produces a
+      # diff and this fails -- the table and the solver cannot drift apart.
+      - name: Verify the puzzle table is up to date
+        run: |
+          dart run tool/generate_puzzles.dart
+          git diff --exit-code assets/puzzles.json
+
+  build:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.2
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      # Project pages are served from https://<user>.github.io/<repo>/, so the
+      # base href must match the repository name or every asset 404s.
+      - name: Build web
+        run: flutter build web --release --no-tree-shake-icons --base-href "/${GITHUB_REPOSITORY#*/}/"
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

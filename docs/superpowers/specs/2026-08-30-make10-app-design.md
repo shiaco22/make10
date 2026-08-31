@@ -467,7 +467,13 @@ class Board {
 
 タブレットではカードを拡大せず、**盤面の最大幅を制限して中央寄せ**する。カードが視野いっぱいに散らばると 4 枚の関係が把握しづらくなるため。
 
-横向き（landscape）は v1 では対応せず、縦向き固定とする。
+**画面の向きは端末種別で切り替える。** 電話は縦向きに固定し、タブレットは自由に回転できるようにする（v1 では「横向き非対応・縦向き固定」だったが、タブレット向けレイアウトの実装によりこの制約が不要になったため変更）。タブレットの横向きレイアウトは盤面・演算子バー・アクションバーのいずれも画面内に収まることを検証済みで（`test/ui/tablet_layout_test.dart` の landscape 系テスト）、固定しておく理由はもうない。片手操作を想定した電話のレイアウトは横向きだと窮屈なままなので、電話側は縦向き固定を維持する。
+
+判定基準はタブレット拡大 (`uiScale`, `lib/ui/widgets/responsive.dart`) と揃え、ビューポートの短辺 (`MediaQuery.sizeOf(context).shortestSide`) と `kTabletBreakpoint` の比較にする。短辺は回転しても変わらない端末固有の値なので（iPad は縦 820×1180 でも横 1180×820 でも短辺 820）、この一点で電話とタブレットを判別できる。短辺が `kTabletBreakpoint` 未満なら `SystemChrome.setPreferredOrientations` に `portraitUp`/`portraitDown` を渡して縦向きに固定し、`kTabletBreakpoint` 以上なら空リストを渡して制約を解除する。
+
+この判定は `main()` では行えない。`runApp` の前はまだどの `BuildContext` も存在せず、`MediaQuery` を読めないためである。`MediaQuery` を参照できる最初の場所である `Make10App.build()` で毎ビルド呼び直す方式にした。電話は縦向きに固定されている以上ビューポートは変化せず、タブレットは回転しても短辺が不変なので、再評価は無害かつ自己修正的（回転が `MediaQuery` を変化させ、その変化自体が次の再評価を自動的に誘発する）である。
+
+なお `setPreferredOrientations` は Web ではそもそも no-op であり、この変更後もブラウザでの挙動は変わらない。
 
 ## 10. エラー処理
 

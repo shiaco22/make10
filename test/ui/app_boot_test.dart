@@ -92,6 +92,27 @@ void main() {
   });
 
   testWidgets(
+      'practice shows a puzzle counter that starts at 1 and advances when a '
+      'new puzzle is dealt', (tester) async {
+    await bootToHome(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'プラクティス'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('やさしい'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(GameScreen), findsOneWidget);
+    expect(find.text('問題 1'), findsOneWidget);
+
+    await tester.tap(find.text('スキップ'));
+    await tester.pump();
+
+    expect(find.text('問題 2'), findsOneWidget);
+    expect(find.text('問題 1'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
       'home -> time attack -> difficulty -> time-up -> もう一度 completes '
       'without exception', (tester) async {
     await bootToHome(tester);
@@ -126,6 +147,23 @@ void main() {
     expect(find.byType(TimeAttackScreen), findsOneWidget);
     expect(find.byType(ResultScreen), findsNothing);
     expect(find.byType(GameScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('time attack does not show a puzzle counter', (tester) async {
+    await bootToHome(tester);
+
+    await tester.tap(find.widgetWithText(FilledButton, 'タイムアタック'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('ふつう'));
+    await pumpTransition(tester);
+
+    expect(find.byType(TimeAttackScreen), findsOneWidget);
+    expect(find.byType(GameScreen), findsOneWidget);
+    // GameSession.puzzleNumber exists in both modes, but only practice's
+    // statusRow (built in HomeScreen) renders it; time attack's statusRow
+    // is the clock + score row built by TimeAttackScreen itself.
+    expect(find.textContaining('問題'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

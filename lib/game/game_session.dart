@@ -66,6 +66,15 @@ class GameSession extends ChangeNotifier {
   /// ようにするためのガード。_deal で新しい問題を配るたびにリセットする。
   bool _outcomeRecorded = false;
 
+  /// このセッションで配られた問題の数（1 始まり）。セッション内だけの
+  /// カウントで、永続化はしない。プラクティスの問題番号表示（仕様
+  /// §9.1）のために存在するが、_deal 自体は practice/timeAttack 共通の
+  /// 経路なので、ここに置いても「配られた回数を数える」という素朴な
+  /// 意味しか持たない。実際に画面へ出すかどうかは呼び出し側
+  /// （HomeScreen）が決める — TimeAttackScreen は自前の statusRow
+  /// （残り時間とスコア）を組むだけで、このカウンタを一切参照しない。
+  int _puzzleNumber = 0;
+
   Puzzle get puzzle => _puzzle;
   Board get board => _board;
   PhaseKind get phase => _phase;
@@ -85,6 +94,9 @@ class GameSession extends ChangeNotifier {
 
   /// 盤面が 1 枚になったが 10 ではない状態。UI が案内を出す。
   bool get missedTarget => _board.isFinished && !_board.isCleared;
+
+  /// このセッションで何問目が配られているか（1 始まり）。
+  int get puzzleNumber => _puzzleNumber;
 
   void start() {
     _deal(puzzles.next(difficulty));
@@ -106,6 +118,7 @@ class GameSession extends ChangeNotifier {
   }
 
   void _deal(Puzzle puzzle, {bool shuffle = true}) {
+    _puzzleNumber++;
     _puzzle = puzzle;
     final digits = List.of(puzzle.digits);
     if (shuffle) digits.shuffle();

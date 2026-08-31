@@ -63,6 +63,20 @@ void main() {
     expect(session.selectedOp, Op.mul);
   });
 
+  test(
+      'puzzleNumber starts at 1 and advances on every new puzzle, including '
+      'after a skip or an answer reveal', () async {
+    expect(session.puzzleNumber, 1);
+
+    session.skip();
+    expect(session.puzzleNumber, 2);
+
+    session.showAnswer();
+    expect(session.puzzleNumber, 2); // 答えを見ただけではまだ配られていない
+    session.nextPuzzle(); // 「次の問題へ」ボタンが呼ぶのと同じ経路
+    expect(session.puzzleNumber, 3);
+  });
+
   test('a rejected merge keeps the card and operator selected', () async {
     session = await sessionWithDigits([7, 2, 1, 1], stats);
     final seven = session.board.cards[0];

@@ -44,6 +44,7 @@ class HomeScreen extends ConsumerWidget {
       MaterialPageRoute(
         builder: (context) => GameScreen(
           session: session,
+          statusRow: _PuzzleCounterRow(session: session),
           onExit: () => Navigator.of(context).pop(),
         ),
       ),
@@ -151,6 +152,34 @@ class HomeScreen extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// プラクティスの [GameScreen.statusRow] に差し込む問題番号表示（仕様
+/// §9.1）。タイムアタックは自前の statusRow（残り時間とスコア）を組むので
+/// このウィジェットとは無関係 — GameSession.puzzleNumber 自体は両モードに
+/// 存在するが、表示するかどうかは呼び出し側のこの一箇所だけで決まる。
+///
+/// [GameScreen] は自身も [session] の変化のたびに再構築されるが、その
+/// 「次に何を描くか」は MaterialPageRoute.builder が最初に一度だけ渡した
+/// [GameScreen.statusRow] の値そのものに委ねられている。つまり素の
+/// Text では最初の問題番号のまま更新されない。session を直接購読する
+/// AnimatedBuilder にすることで、このウィジェット自身が独立して
+/// 再描画され、問題が進むたびに数字を更新できる。
+class _PuzzleCounterRow extends StatelessWidget {
+  final GameSession session;
+
+  const _PuzzleCounterRow({required this.session});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: session,
+      builder: (context, _) => Text(
+        '問題 ${session.puzzleNumber}',
+        style: Theme.of(context).textTheme.titleMedium,
       ),
     );
   }

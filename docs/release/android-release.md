@@ -7,6 +7,13 @@ MAKE10 を Google Play に出すまでの手順。**署名鍵まわりが唯一�
 - 現在のバージョン: `pubspec.yaml` の `version: 1.0.0+1`
   （`1.0.0` = versionName、`1` = versionCode）
 
+> **リリース前に必ず片付けること（2件）**
+>
+> 1. **AdMob の ID がまだ Google のテスト ID のまま。** このまま公開すると
+>    テスト広告しか出ず、収益が一切発生しない。§6 を参照。
+> 2. **Play Console にアプリ内購入の商品を作っていない。** 商品 ID が無いと
+>    「広告を消す」の購入フローがその場で失敗する。§6-2 を参照。
+
 ---
 
 ## 0. 前提：アップロード鍵の扱い
@@ -130,15 +137,14 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 3. **ストアの掲載情報** — `store/play-listing.md` の文面をそのまま貼る。
    アイコンは `store/icon-512.png`、
    フィーチャーグラフィックは `store/feature-graphic-1024x500.png`。
-   **スクリーンショットは最低2枚必要**で、これだけは実機かエミュレータで撮る必要がある
-   （`store/play-listing.md` 末尾に撮る画面の候補を書いてある）
+   スクリーンショットは `store/android/`（スマホ8枚・タブレット2種各5枚）に撮影済み
 4. **アプリのコンテンツ** — 以下をすべて申告する。回答案は `store/play-listing.md` にある
    - プライバシーポリシー
    - アプリのアクセス権 → 制限なし
-   - 広告 → 広告なし
+   - 広告 → **広告あり**
    - コンテンツのレーティング → アンケートに回答（全年齢になる想定）
    - 対象ユーザー
-   - データセーフティ → すべて「収集しない」
+   - データセーフティ → **広告 SDK があるため「収集する」**（内訳は `store/play-listing.md`）
    - 政府アプリ / 金融商品 / 健康 → いずれも該当なし
 5. **リリースを作成** — 製品版（または内部テスト）に `.aab` をアップロードし、
    リリースノートを書いて「審査に送信」
@@ -149,7 +155,12 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 - [ ] `pubspec.yaml` の `version` を上げた（**versionCode は前回より必ず大きく**）
 - [ ] `.aab` の署名者がアップロード鍵と一致する
 - [ ] `targetSdk = 36`（2026-08-31 以降、Play の新規アプリ・更新の必須要件）
+- [ ] **AdMob が本番 ID になっている**（`AdUnitIds.productionIdsConfigured` が true）
+- [ ] **Play Console に課金商品 2 つを作成し、有効化した**
+- [ ] データセーフティで「データを収集する」を申告した（広告 SDK があるため）
+- [ ] 広告の有無で「はい」を選んだ
 - [ ] 実機で一度インストールして起動する（内部テストトラックが手軽）
+- [ ] 実機で広告が表示され、購入フローが最後まで通る（内部テストで購入は無料）
 - [ ] プライバシーポリシーの URL が実際に開ける
 
 ## 5. 更新をリリースするとき
@@ -158,6 +169,64 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 2. 変更をコミットして `main` に入れる
 3. Actions からワークフローを実行し、`.aab` を取得
 4. Play Console で新しいリリースを作成してアップロード
+
+---
+
+## 6. 収益化まわりの必須作業
+
+このアプリはインタースティシャル広告（google_mobile_ads）と、広告を消す
+アプリ内購入（in_app_purchase）を持つ。どちらも**ストア側の設定と対で
+初めて動く**ので、コードだけ入っていても公開はできない。
+
+### 6-1. AdMob の本番 ID に差し替える
+
+現在の ID は Google が公開しているテスト用で、AdMob アカウントが無くても
+安全に動く代わりに、**必ずテスト広告しか返さない**。収益は発生しない。
+
+1. [AdMob](https://admob.google.com/) でアカウントを作り、アプリを登録する
+   （Play で未公開のうちは「ストアに登録されていない」を選んで先に作れる）
+2. インタースティシャル広告ユニットを1つ作る
+3. 受け取った ID を3箇所に入れる。定義元は
+   `lib/monetization/ads/ad_unit_ids.dart`:
+   - `_prodInterstitialUnitId` に広告ユニット ID
+   - `productionIdsConfigured` を `true` に
+   - `androidAppId` にアプリ ID
+4. `android/app/src/main/AndroidManifest.xml` の
+   `com.google.android.gms.ads.APPLICATION_ID` を同じアプリ ID に更新する
+   （マニフェストの静的値なので、Dart 側から実行時に差し替えられない）
+5. `ios/Runner/Info.plist` の `GADApplicationIdentifier` も同様に更新する
+6. `flutter test` を通す（`test/platform/manifest_xml_test.dart` が
+   ID の形式を検査している）
+
+> XML コメントに `--` を書くとマニフェストのパースが壊れる。過去に一度踏んで
+> いるので、コメントを足すときは注意する。テストが見張っている。
+
+アプリを Play に公開したあと、AdMob 側でそのアプリを Play のリスティングと
+**リンクする**こと。リンクしないと広告配信が制限されることがある。
+
+### 6-2. Play Console にアプリ内購入の商品を作る
+
+商品 ID は `lib/monetization/billing/product_ids.dart` が定義元。
+Play Console 側と1文字でも違うと購入できない。
+
+| 商品 ID | 場所 | 種別 | 価格 |
+| --- | --- | --- | --- |
+| `make10_noads_monthly` | 収益化 → 定期購入 | 定期購入（ベースプラン `monthly`） | ¥300 / 月 |
+| `make10_noads_lifetime` | 収益化 → アプリ内アイテム | 1回限りの購入（管理対象） | ¥980 |
+
+- 作成後に**有効化**する。作っただけでは購入フローが動かない
+- 課金を使うには **販売者アカウント（お支払いプロファイル）**の設定が要る
+- 購入テストはライセンステスター登録か内部テストトラックで行う。
+  実際の課金は発生しない
+
+### 6-3. app-ads.txt（任意だが推奨）
+
+AdMob は広告枠のなりすまし防止のため `app-ads.txt` の設置を推奨している。
+Play の掲載情報に書いたウェブサイトの**ドメイン直下**に置く必要があるため、
+`https://shiaco22.github.io/make10/` を指定した場合は
+`https://shiaco22.github.io/app-ads.txt`（＝ `shiaco22.github.io` リポジトリの
+直下）に置くことになる。このリポジトリの Pages ではドメイン直下に置けない。
+未設置でも配信はされるが、単価が下がることがある。
 
 ---
 

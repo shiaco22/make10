@@ -13,11 +13,15 @@ recording per-difficulty stats and best scores on-device:
 - **Time Attack** -- a 120-second run scored by puzzles cleared; hints and
   "view answer" are disabled.
 
-Not in this app (v1 scope; see
-`docs/superpowers/specs/2026-08-30-make10-app-design.md` section 1.1 for the
-authoritative list): sound/haptics, online leaderboards, accounts or any
-network communication, daily challenges or stage progression, ads or
-in-app purchases, and localization -- the UI is Japanese only.
+Monetised with a full-screen interstitial (every three practice clears, and on
+the Time Attack result screen) and an in-app purchase that removes it, monthly
+or one-off. Everything else runs on-device: the puzzles, the scoring and the
+stats need no network.
+
+Not in this app: sound/haptics, online leaderboards, accounts, daily challenges
+or stage progression, and localization -- the UI is Japanese only. The spec's
+section 1.1 still lists ads and purchases as out of scope; that list predates
+the monetisation work and no longer describes the app.
 
 ## Requirements
 

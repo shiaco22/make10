@@ -155,10 +155,32 @@ MAKE10 - 10をつくる計算パズル
 限定し、広告 ID を使わない構成にする必要がある。現在の AdMob の
 標準構成のままでは要件を満たせない。
 
-## アプリのアクセス権（App access）
+## ログインの詳細（旧「アプリのアクセス権」）
 
-すべてのコンテンツが制限なしで利用可能。ログイン不要のため、審査用の
-テストアカウントは不要 →「すべての機能が制限なく利用可能」を選択。
+**「アプリの一部にアクセス制限がありますか？」→ はい** を選び、
+下の手順文を貼る。認証情報の欄は空のままでよい。
+
+判断の理由: このアプリにログインは無く、ペイウォールの向こうにあるコンテンツも
+無い。パズル・両モード・全難易度・ヒント・統計は購入なしで全部触れるので、
+Google のヘルプが言う「定期購入者しかアクセスできない機能やコンテンツ」には
+あたらない。**それでも「はい」にするのは、Play Console の画面がトリガーとして
+「1回限りのアイテム、メンバーシップ、定期購入」を明示的に挙げているため。**
+手順文を添えれば審査側に不足は無く、「いいえ」で申告が誤りと判断される
+リスクだけを消せる。
+
+手順欄（**英語で書く必要がある**）:
+
+```
+No login or account is required. All content is accessible without payment:
+both game modes (Practice and Time Attack), all three difficulty levels, hints,
+"view answer" and the statistics screen are fully available to any user
+immediately after install.
+
+The app offers one optional in-app purchase (make10_noads_monthly /
+make10_noads_lifetime). It only disables the interstitial ads. It does not
+unlock any content, screen, level or feature, so no part of the app is behind
+a paywall and no test credentials are needed to review the app in full.
+```
 
 ## 画像素材
 

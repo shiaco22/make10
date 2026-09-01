@@ -221,8 +221,14 @@ Flutter による単一コードベースで iOS と Android の両方を提供�
 | フレームワーク | Flutter (Dart) | 単一コードベースで iOS/Android。カードの描画とアニメーションが得意 |
 | 状態管理 | Riverpod | DI が素直で、セッション状態を単体テストしやすい |
 | 永続化 | shared_preferences | 保存対象は統計とベストスコアのみ。DB は過剰 |
+| 広告 | google_mobile_ads | インタースティシャル広告。Android/iOS 専用 |
+| 課金 | in_app_purchase | 広告除去の購読・買い切り購入。Android/iOS 専用 |
 
-外部依存はこの 2 パッケージのみ。ネットワーク層を持たない。
+外部依存は上記 4 パッケージ（旧版はここに「2 パッケージのみ」と書いていたが、
+広告・課金の追加でその制約は外れた）。広告・課金の 2 パッケージは
+Android/iOS 専用のプラグインで、Web ビルドは conditional import
+（`dart.library.io` 判定）によりこれらを一切参照しない — 詳細は
+`lib/monetization/` 配下の各ゲートウェイの doc コメントを参照。
 
 ### 6.2 ディレクトリ構成
 
@@ -234,11 +240,25 @@ lib/
     solver.dart              # 全解列挙・ヒント・詰み判定
     puzzle.dart              # 問題のデータ構造
     difficulty.dart          # 難易度の列挙と分類ロジック
+    ad_policy.dart           # インタースティシャルを出す判断（純粋ロジック、プラグイン非依存）
   data/
     puzzle_repository.dart   # puzzles.json を読み、直近50問を避けて難易度別プールから抽選
     stats_repository.dart    # 統計の読み書き（shared_preferences）
     history_repository.dart  # 出題履歴の読み書き（shared_preferences・別キー）
+    entitlement_repository.dart # 広告除去権利の読み書き（shared_preferences・別キー）
     models/stats.dart
+    models/entitlement.dart
+  monetization/
+    ads/
+      ad_gateway.dart          # AdGateway 抽象 + conditional import での実装選択
+      ad_gateway_io.dart       # google_mobile_ads 実装（Android/iOS）
+      ad_gateway_web.dart      # 何もしない実装（Web）
+      ad_unit_ids.dart         # 広告 ID の単一のソース（本番/テスト切り替え）
+    billing/
+      billing_gateway.dart     # BillingGateway 抽象 + conditional import での実装選択
+      billing_gateway_io.dart  # in_app_purchase 実装（Android/iOS）
+      billing_gateway_web.dart # 何もしない実装（Web）
+      product_ids.dart         # 商品 ID の単一のソース
   game/
     game_session.dart        # 1 プレイの進行（プラクティス）
     time_attack_session.dart # 残り時間とスコア

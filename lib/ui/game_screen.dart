@@ -31,11 +31,24 @@ class GameScreen extends StatefulWidget {
   final Widget? statusRow;
   final VoidCallback? onExit;
 
+  /// クリア直後の「次の問題へ」がタップされた時に、`session.nextPuzzle`の
+  /// 代わりに呼ぶフック。省略時（null）は今日通り `session.nextPuzzle` を
+  /// 直接呼ぶ。
+  ///
+  /// プラクティスの呼び出し側（HomeScreen）がここにインタースティシャル
+  /// 広告のチェックを差し込む -- 「クリア!」の表示中ではなく、そこから
+  /// 離れる操作そのものに広告の判断をひも付けるためのフック。答えを見た後
+  /// の「次の問題へ」（下の `answerShown` 分岐）はこれを一切通らず、常に
+  /// `session.nextPuzzle` を直接呼ぶ -- 答えを見た問題はそもそも
+  /// 「クリア」ではないため。
+  final VoidCallback? onAdvanceFromCleared;
+
   const GameScreen({
     super.key,
     required this.session,
     this.statusRow,
     this.onExit,
+    this.onAdvanceFromCleared,
   });
 
   @override
@@ -267,7 +280,7 @@ class _GameScreenState extends State<GameScreen>
           Text('クリア!', style: theme.textTheme.headlineSmall),
           const SizedBox(height: 8),
           FilledButton(
-            onPressed: session.nextPuzzle,
+            onPressed: widget.onAdvanceFromCleared ?? session.nextPuzzle,
             child: const Text('次の問題へ'),
           ),
         ],

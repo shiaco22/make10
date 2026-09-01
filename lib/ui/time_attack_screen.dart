@@ -14,11 +14,25 @@ class TimeAttackScreen extends StatefulWidget {
   /// 省略した場合も「もう一度」ボタンは表示され、onExit にフォールバックする。
   final VoidCallback? onRetry;
 
+  /// リザルト画面（スコア表示後）を「もう一度」「ホームへ」どちらで離れる
+  /// 場合にも、実際に離れる直前に一度だけ呼ぶフック。省略時（null）は
+  /// 何もせず、今日通り即座に進む。
+  ///
+  /// スコアは既に画面に表示された後、離れる操作そのものにだけ広告の判断を
+  /// ひも付けることで、ご褒美であるスコア表示を広告が隠さないようにする
+  /// （プラクティスの「クリア!」と「次の問題へ」の関係と同じ考え方 --
+  /// GameScreen.onAdvanceFromCleared 参照）。プレイ中に閉じる「X」ボタン
+  /// （GameScreen 側に渡す onExit）はここを一切通らない -- タイムアタックは
+  /// プレイ中は絶対に広告を出さないため、リザルト画面固有のこのフックと
+  /// 混ぜてはいけない。
+  final Future<void> Function()? onLeavingResult;
+
   const TimeAttackScreen({
     super.key,
     required this.session,
     required this.onExit,
     this.onRetry,
+    this.onLeavingResult,
   });
 
   @override
@@ -58,6 +72,15 @@ class _TimeAttackScreenState extends State<TimeAttackScreen>
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
+  /// [widget.onLeavingResult] があれば待ってから [proceed] を呼ぶ。
+  /// null なら (今日通り) 即座に同期的に [proceed] を呼ぶ -- フックを
+  /// 渡さない既存の呼び出し元・テストの挙動を一切変えない。
+  Future<void> _advanceFromResult(VoidCallback proceed) async {
+    final hook = widget.onLeavingResult;
+    if (hook != null) await hook();
+    proceed();
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -71,8 +94,8 @@ class _TimeAttackScreenState extends State<TimeAttackScreen>
                 .bestScore,
             bestUpdated: widget.session.bestUpdated,
             isSaving: widget.session.isSavingResult,
-            onRetry: widget.onRetry ?? widget.onExit,
-            onHome: widget.onExit,
+            onRetry: () => _advanceFromResult(widget.onRetry ?? widget.onExit),
+            onHome: () => _advanceFromResult(widget.onExit),
           );
         }
         return GameScreen(

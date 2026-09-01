@@ -1,6 +1,11 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/entitlement_repository.dart';
+import '../data/models/entitlement.dart';
 import '../data/puzzle_repository.dart';
 import '../data/stats_repository.dart';
 import '../domain/difficulty.dart';
@@ -9,6 +14,7 @@ import '../game/providers.dart';
 import '../game/time_attack_session.dart';
 import 'difficulty_screen.dart';
 import 'game_screen.dart';
+import 'remove_ads_screen.dart';
 import 'stats_screen.dart';
 import 'time_attack_screen.dart';
 import 'widgets/responsive.dart';
@@ -34,12 +40,23 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  void _startPractice(
+  /// インタースティシャル判定に使う調整役を先に解決してから画面を積む。
+  ///
+  /// 呼び出しごとに Riverpod のプロバイダを解決し直すのではなく、ここで
+  /// 一度だけ解決してクロージャに閉じ込めておくことで、「次の問題へ」を
+  /// 押すたびに走る非同期の連鎖を1段（コーディネータのメソッド呼び出し
+  /// だけ）に減らせる -- プレイヤーが3問クリアする頃には確実に解決済みに
+  /// なっている。
+  Future<void> _startPractice(
     BuildContext context,
+    WidgetRef ref,
     PuzzleRepository puzzles,
     StatsRepository stats,
     Difficulty difficulty,
-  ) {
+  ) async {
+    final coordinator =
+        await ref.read(interstitialAdCoordinatorProvider.future);
+    if (!context.mounted) return;
     final session = GameSession(
       puzzles: puzzles,
       stats: stats,
@@ -51,6 +68,10 @@ class HomeScreen extends ConsumerWidget {
           session: session,
           statusRow: _PuzzleCounterRow(session: session),
           onExit: () => Navigator.of(context).pop(),
+          onAdvanceFromCleared: () async {
+            await coordinator.onPracticeClearAdvance();
+            session.nextPuzzle();
+          },
         ),
       ),
     );
@@ -60,12 +81,16 @@ class HomeScreen extends ConsumerWidget {
   ///
   /// 「もう一度」は今の画面を閉じてから同じ難易度で開き直す。
   /// TimeAttackSession は使い捨てなので、作り直すのが最も素直。
-  void _startTimeAttack(
+  Future<void> _startTimeAttack(
     BuildContext context,
+    WidgetRef ref,
     PuzzleRepository puzzles,
     StatsRepository stats,
     Difficulty difficulty,
-  ) {
+  ) async {
+    final coordinator =
+        await ref.read(interstitialAdCoordinatorProvider.future);
+    if (!context.mounted) return;
     final session = TimeAttackSession(
       puzzles: puzzles,
       stats: stats,
@@ -80,8 +105,11 @@ class HomeScreen extends ConsumerWidget {
               onExit: () => Navigator.of(routeContext).pop(),
               onRetry: () {
                 Navigator.of(routeContext).pop();
-                _startTimeAttack(context, puzzles, stats, difficulty);
+                unawaited(
+                  _startTimeAttack(context, ref, puzzles, stats, difficulty),
+                );
               },
+              onLeavingResult: coordinator.onLeavingTimeAttackResult,
             ),
           ),
         )
@@ -133,7 +161,8 @@ class HomeScreen extends ConsumerWidget {
                           final d =
                               await _pickDifficulty(context, 'プラクティス');
                           if (d != null && context.mounted) {
-                            _startPractice(context, puzzles, stats, d);
+                            await _startPractice(
+                                context, ref, puzzles, stats, d);
                           }
                         },
                         child: const Text('プラクティス'),
@@ -149,7 +178,8 @@ class HomeScreen extends ConsumerWidget {
                           final d =
                               await _pickDifficulty(context, 'タイムアタック');
                           if (d != null && context.mounted) {
-                            _startTimeAttack(context, puzzles, stats, d);
+                            await _startTimeAttack(
+                                context, ref, puzzles, stats, d);
                           }
                         },
                         child: const Text('タイムアタック'),
@@ -164,6 +194,12 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       child: const Text('統計'),
                     ),
+                    // Web では google_mobile_ads/in_app_purchase のどちらも
+                    // 常に「何もしない」実装 (WebAdGateway/WebBillingGateway)
+                    // になり、広告は最初から一切出ない。出ない広告を消す
+                    // 購入を持ちかけても機能しない導線でしかないので、
+                    // Web ビルドではこの入口自体を出さない。
+                    if (!kIsWeb) _RemoveAdsEntry(scale: scale),
                   ],
                 ),
               );
@@ -199,6 +235,59 @@ class _PuzzleCounterRow extends StatelessWidget {
         '問題 ${session.puzzleNumber}',
         style: Theme.of(context).textTheme.titleMedium,
       ),
+    );
+  }
+}
+
+/// ホーム画面の「広告を消す」導線。
+///
+/// [EntitlementRepository] は [ChangeNotifier] なので、[RemoveAdsScreen] で
+/// 購入や restore が成立した瞬間 -- ホームへ戻る前でも -- このラベルが
+/// 追従する。読み込み中・エラー時はまだ権利の有無が分からないので、
+/// 「未購入」側の表示にフォールバックする（安全側 = 広告が出ている前提の
+/// 表示に倒す）。
+class _RemoveAdsEntry extends ConsumerWidget {
+  final double scale;
+
+  const _RemoveAdsEntry({required this.scale});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final entitlementAsync = ref.watch(entitlementRepositoryProvider);
+    return entitlementAsync.when(
+      loading: () => const SizedBox(height: 8),
+      error: (_, _) => _entry(context, ref, null),
+      data: (entitlements) => AnimatedBuilder(
+        animation: entitlements,
+        builder: (context, _) => _entry(context, ref, entitlements),
+      ),
+    );
+  }
+
+  Widget _entry(
+    BuildContext context,
+    WidgetRef ref,
+    EntitlementRepository? entitlements,
+  ) {
+    final entitled = entitlements?.isEntitled() ?? false;
+    final label = entitled
+        ? '広告オフ中(${entitlements!.state.source.label})'
+        : '広告を消す';
+    return TextButton(
+      style: scale > 1.0
+          ? TextButton.styleFrom(textStyle: TextStyle(fontSize: 14 * scale))
+          : null,
+      onPressed: entitlements == null
+          ? null
+          : () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => RemoveAdsScreen(
+                    billing: ref.read(billingGatewayProvider),
+                    entitlements: entitlements,
+                  ),
+                ),
+              ),
+      child: Text(label),
     );
   }
 }

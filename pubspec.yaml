@@ -32,11 +32,18 @@ dependencies:
     sdk: flutter
 
   flutter_riverpod: ^3.4.2
+  google_mobile_ads: ^9.1.0
+  in_app_purchase: ^3.3.0
   shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # in_app_purchase の推移的依存。BillingGateway のテストで
+  # InAppPurchasePlatform を直接 extends して偽装するために import するので、
+  # 明示的な (dev) 依存にする。
+  in_app_purchase_platform_interface: ^1.4.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

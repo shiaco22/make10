@@ -33,13 +33,13 @@
         <!-- AdMob (google_mobile_ads) reads this at process start; a missing
              or malformed value crashes the app on launch. This is currently
              Google's public test App ID (safe with no AdMob account, always
-             serves test ads) -- production IDs have not been supplied yet.
+             serves test ads) / production IDs have not been supplied yet.
              Keep this in sync by hand with AdUnitIds.androidAppId in
              lib/monetization/ads/ad_unit_ids.dart, which is the single
              source of truth for both the app ID and the interstitial unit
              ID (a manifest value can't be swapped at runtime from Dart).
              ios/Runner/Info.plist's GADApplicationIdentifier intentionally
-             carries this same value -- see the comment there. -->
+             carries this same value / see the comment there. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713" />

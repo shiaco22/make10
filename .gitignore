@@ -49,3 +49,8 @@ app.*.map.json
 
 # subagent-driven-development scratch
 .superpowers/
+
+# Android release signing -- never commit the upload key or its passwords
+/android/key.properties
+**/*.jks
+**/*.keystore

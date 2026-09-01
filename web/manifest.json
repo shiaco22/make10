@@ -1,11 +1,11 @@
 {
-    "name": "make10",
-    "short_name": "make10",
+    "name": "MAKE10 - 10をつくる計算パズル",
+    "short_name": "MAKE10",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#283593",
+    "theme_color": "#3f51b5",
+    "description": "4つの数字を + - x / で組み合わせて 10 をつくるパズル。完全オフライン。",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

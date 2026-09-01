@@ -44,8 +44,11 @@ class AdUnitIds {
   static const String? _prodAndroidAppId = null;
 
   /// `android/app/src/main/AndroidManifest.xml` の
-  /// `com.google.android.gms.ads.APPLICATION_ID` に書き写す値。
-  /// マニフェストは静的ファイルなので、この getter を Dart 側から実行時に
+  /// `com.google.android.gms.ads.APPLICATION_ID`、および
+  /// `ios/Runner/Info.plist` の `GADApplicationIdentifier` に書き写す値
+  /// （両プラットフォームで同じテスト ID を共有する設計 -- どちらも
+  /// Google のテスト用アカウントに解決され、常にテスト広告を返す）。
+  /// どちらも静的ファイルなので、この getter を Dart 側から実行時に
   /// 読ませることはできない — このファイルを「正」として手動で同期する。
   static String get androidAppId {
     final prod = _prodAndroidAppId;

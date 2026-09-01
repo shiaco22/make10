@@ -37,7 +37,9 @@
              Keep this in sync by hand with AdUnitIds.androidAppId in
              lib/monetization/ads/ad_unit_ids.dart, which is the single
              source of truth for both the app ID and the interstitial unit
-             ID (a manifest value can't be swapped at runtime from Dart). -->
+             ID (a manifest value can't be swapped at runtime from Dart).
+             ios/Runner/Info.plist's GADApplicationIdentifier intentionally
+             carries this same value -- see the comment there. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="ca-app-pub-3940256099942544~3347511713" />

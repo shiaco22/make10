@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models/entitlement.dart';
@@ -20,7 +21,15 @@ const String _prefsKey = 'make10.entitlement';
 /// 機能なので、割られた場合の実害も限定的（他プレイヤーの得点やランキングに
 /// 影響しない）。この非対称性を踏まえて、シンプルさを優先した —
 /// 「サーバー検証はしない」という判断そのものを、ここに明文化しておく。
-class EntitlementRepository {
+///
+/// [ChangeNotifier] を継承しているのは、UI（ホーム画面の「広告を消す」欄・
+/// 広告除去画面）が購入/restore の結果をリアルタイムに反映できるようにする
+/// ため。Riverpod の FutureProvider はインスタンスを1回だけ生成してキャッシュ
+/// するので、その後の状態変化（grantLifetime 等によるフィールドの書き換え）
+/// はプロバイダの再評価だけでは検知できない -- 呼び出し側は
+/// [AnimatedBuilder]/[ListenableBuilder] でこのインスタンス自身を購読する
+/// ことを想定している（[GameSession] を UI が購読するのと同じパターン）。
+class EntitlementRepository extends ChangeNotifier {
   EntitlementState _state = EntitlementState.none;
 
   /// 現在保持している権利レコード（表示用）。判定には [isEntitled] を使うこと。
@@ -30,24 +39,28 @@ class EntitlementRepository {
   bool isEntitled({DateTime? now}) => _state.isActiveOn(now ?? DateTime.now());
 
   Future<void> load() async {
-    _state = EntitlementState.none;
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
-    if (raw == null) return;
-    try {
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      _state = EntitlementState.fromJson(data);
-    } catch (_) {
-      // 壊れていたら「権利なし」として続行する。誤って広告を消したままに
-      // するより、安全側（広告が出る側）に倒す。
-      _state = EntitlementState.none;
+    var state = EntitlementState.none;
+    if (raw != null) {
+      try {
+        final data = jsonDecode(raw) as Map<String, dynamic>;
+        state = EntitlementState.fromJson(data);
+      } catch (_) {
+        // 壊れていたら「権利なし」として続行する。誤って広告を消したままに
+        // するより、安全側（広告が出る側）に倒す。
+        state = EntitlementState.none;
+      }
     }
+    _state = state;
+    notifyListeners();
   }
 
   /// 買い切り `make10_noads_lifetime` の購入（新規または restore）を記録する。
   /// 失効しない — 一度きりで以後ずっと有効。
   Future<void> grantLifetime() async {
     _state = const EntitlementState(source: EntitlementSource.lifetime);
+    notifyListeners();
     await _save();
   }
 
@@ -63,6 +76,7 @@ class EntitlementRepository {
       source: EntitlementSource.monthly,
       expiresAt: (now ?? DateTime.now()).add(kSubscriptionTrustWindow),
     );
+    notifyListeners();
     await _save();
   }
 
@@ -72,6 +86,7 @@ class EntitlementRepository {
   /// 自動的に処理するため、通常はこれを呼ぶ必要はない。
   Future<void> revoke() async {
     _state = EntitlementState.none;
+    notifyListeners();
     await _save();
   }
 

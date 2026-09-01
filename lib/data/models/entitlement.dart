@@ -1,6 +1,23 @@
 /// 広告除去の権利をどちらの商品が与えているか。
 enum EntitlementSource { none, monthly, lifetime }
 
+/// [Difficulty] の `DifficultyDisplay.label` と同じ考え方 --
+/// UI 表示名を列挙型のすぐそばに置く。[EntitlementSource.none] には
+/// 呼ばない想定（呼び出し側は `isEntitled()` で権利があることを確認して
+/// から使う）。
+extension EntitlementSourceDisplay on EntitlementSource {
+  String get label {
+    switch (this) {
+      case EntitlementSource.monthly:
+        return '月額購読';
+      case EntitlementSource.lifetime:
+        return '買い切り';
+      case EntitlementSource.none:
+        return '';
+    }
+  }
+}
+
 /// サーバーが無い状態で「月額購読の権利をいつまで信用するか」の猶予期間。
 ///
 /// [EntitlementRepository]（呼び出し側）は購入ストアから購読が有効だと

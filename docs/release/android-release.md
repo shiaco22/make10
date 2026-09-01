@@ -178,6 +178,10 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 アプリ内購入（in_app_purchase）を持つ。どちらも**ストア側の設定と対で
 初めて動く**ので、コードだけ入っていても公開はできない。
 
+**画面ごとの詳しい手順は
+[`docs/release/monetization-setup.md`](monetization-setup.md) にある。**
+以下はその要約。
+
 ### 6-1. AdMob の本番 ID に差し替える
 
 現在の ID は Google が公開しているテスト用で、AdMob アカウントが無くても

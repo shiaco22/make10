@@ -92,7 +92,9 @@ moving the project is the real fix.
 
 The Play Store release path -- signing keys, the `.aab` build, and the Play
 Console checklist -- is written up in
-[`docs/release/android-release.md`](docs/release/android-release.md).
+[`docs/release/android-release.md`](docs/release/android-release.md), and the
+AdMob and in-app-purchase setup that has to happen alongside it is in
+[`docs/release/monetization-setup.md`](docs/release/monetization-setup.md).
 
 Two things about it are worth knowing before you start:
 

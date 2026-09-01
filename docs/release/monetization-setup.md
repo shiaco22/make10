@@ -8,9 +8,11 @@ MAKE10 のコードには広告と課金がすでに実装されている。し�
 
 | 項目 | 状態 |
 | --- | --- |
-| AdMob のアプリ ID / 広告ユニット ID | **Google のテスト ID**（`AdUnitIds.productionIdsConfigured = false`） |
+| AdMob のアプリ ID / 広告ユニット ID | **設定済み**（2026-09-01、Android 分のみ。A-1 〜 A-4 完了） |
+| AdMob のストアリンクと審査 | **未**（A-6。ここを通るまで本番広告は出ない） |
 | Play Console の課金商品 | **未作成** |
 | お支払いプロファイル | 未確認 |
+| iOS の AdMob ID | **未取得**（Android 単独リリースの間は不要。A-7） |
 
 ## 全体の順序
 

@@ -24,18 +24,17 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<!-- AdMob (google_mobile_ads) reads this at process start; a missing or
-	     malformed value crashes the app on launch. This is Google's public
-	     test App ID / the same one already in
-	     android/app/src/main/AndroidManifest.xml (see the comment there),
-	     reused here rather than iOS's own published test App ID: this
-	     project treats the AdMob app ID as one value shared across
-	     platforms (lib/monetization/ads/ad_unit_ids.dart's androidAppId is
-	     already the single source of truth for the Android manifest, and
-	     the same test ID is safe on either platform / it always resolves
-	     to Google's test account and always serves test ads). Production
-	     IDs have not been supplied yet; keep this in sync by hand with
-	     AdUnitIds.androidAppId when they are. -->
+	<!-- AdMob reads this at launch; a missing or malformed value crashes
+	     the app. This is Google's public test App ID, which always resolves
+	     to Google's test account and always serves test ads, so it is safe
+	     to ship in a build nobody publishes.
+
+	     It is deliberately NOT the production ID in
+	     lib/monetization/ads/ad_unit_ids.dart: AdMob issues a separate app
+	     ID and a separate ad unit ID for each platform, and only Android's
+	     have been created. Registering an iOS app in AdMob and splitting
+	     AdUnitIds per platform is a prerequisite for any iOS release / see
+	     the note at the top of that file. -->
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3940256099942544~3347511713</string>
 	<key>LSRequiresIPhoneOS</key>

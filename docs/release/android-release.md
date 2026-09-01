@@ -7,12 +7,15 @@ MAKE10 を Google Play に出すまでの手順。**署名鍵まわりが唯一�
 - 現在のバージョン: `pubspec.yaml` の `version: 1.0.0+1`
   （`1.0.0` = versionName、`1` = versionCode）
 
-> **リリース前に必ず片付けること（2件）**
+> **リリース前に必ず片付けること**
 >
-> 1. **AdMob の ID がまだ Google のテスト ID のまま。** このまま公開すると
->    テスト広告しか出ず、収益が一切発生しない。§6 を参照。
-> 2. **Play Console にアプリ内購入の商品を作っていない。** 商品 ID が無いと
->    「広告を消す」の購入フローがその場で失敗する。§6-2 を参照。
+> - **Play Console にアプリ内購入の商品を作っていない。** 商品 ID が無いと
+>   「広告を消す」の購入フローがその場で失敗する。§6-2 を参照。
+>
+> AdMob の本番 ID は 2026-09-01 に設定済み（Android 分）。ただし本番の広告が
+> 配信されるのは、ストア公開後に AdMob でリンクし、AdMob の審査を通ってから。
+> 公開直後に広告が出ないのは正常。詳細は
+> [`monetization-setup.md`](monetization-setup.md) の A-6。
 
 ---
 
@@ -155,7 +158,7 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 - [ ] `pubspec.yaml` の `version` を上げた（**versionCode は前回より必ず大きく**）
 - [ ] `.aab` の署名者がアップロード鍵と一致する
 - [ ] `targetSdk = 36`（2026-08-31 以降、Play の新規アプリ・更新の必須要件）
-- [ ] **AdMob が本番 ID になっている**（`AdUnitIds.productionIdsConfigured` が true）
+- [x] **AdMob が本番 ID になっている**（`AdUnitIds.productionIdsConfigured` が true）
 - [ ] **Play Console に課金商品 2 つを作成し、有効化した**
 - [ ] データセーフティで「データを収集する」を申告した（広告 SDK があるため）
 - [ ] 広告の有無で「はい」を選んだ

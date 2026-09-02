@@ -25,17 +25,26 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<!-- AdMob (google_mobile_ads) reads this at process start; a missing or
-	     malformed value crashes the app on launch. This is Google's public
-	     test App ID / the same one already in
-	     android/app/src/main/AndroidManifest.xml (see the comment there),
-	     reused here rather than iOS's own published test App ID: this
-	     project treats the AdMob app ID as one value shared across
-	     platforms (lib/monetization/ads/ad_unit_ids.dart's androidAppId is
-	     already the single source of truth for the Android manifest, and
-	     the same test ID is safe on either platform / it always resolves
-	     to Google's test account and always serves test ads). Production
-	     IDs have not been supplied yet; keep this in sync by hand with
-	     AdUnitIds.androidAppId when they are. -->
+	     malformed value crashes the app on launch. This is intentionally
+	     still Google's public test App ID, kept on purpose, not an
+	     oversight: AdMob registers each platform as a separate app with
+	     its own app ID and ad unit IDs, and no iOS AdMob app has been
+	     registered yet. android/app/src/main/AndroidManifest.xml now
+	     carries Android's own production AdMob app ID (see the comment
+	     there) / reusing that value here would be a misconfiguration
+	     (AdMob would reject requests for the wrong platform, and it would
+	     put a real publisher account behind an unverified build). iOS has
+	     never been built or run in this project (that needs macOS +
+	     Xcode), so staying on the test ID is safe. This test ID always
+	     resolves to Google's test account and always serves test ads, on
+	     either platform, with no AdMob account needed.
+	     When an iOS AdMob app is registered: add its app ID and ad unit ID
+	     to lib/monetization/ads/ad_unit_ids.dart (see that file's doc
+	     comment for the exact steps), then update this value to match and
+	     rewrite this comment. test/platform/manifest_xml_test.dart checks
+	     that this still holds the shared test App ID and that it never
+	     carries Android's production one, so update that test too when
+	     iOS goes live. -->
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-3940256099942544~3347511713</string>
 	<key>LSRequiresIPhoneOS</key>

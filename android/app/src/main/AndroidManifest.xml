@@ -32,18 +32,21 @@
             android:name="flutterEmbedding"
             android:value="2" />
         <!-- AdMob (google_mobile_ads) reads this at process start; a missing
-             or malformed value crashes the app on launch. This is currently
-             Google's public test App ID (safe with no AdMob account, always
-             serves test ads) / production IDs have not been supplied yet.
-             Keep this in sync by hand with AdUnitIds.androidAppId in
+             or malformed value crashes the app on launch. This is the
+             production Android AdMob app ID, confirmed with the product
+             owner. Keep this in sync by hand with AdUnitIds.androidAppId in
              lib/monetization/ads/ad_unit_ids.dart, which is the single
-             source of truth for both the app ID and the interstitial unit
-             ID (a manifest value can't be swapped at runtime from Dart).
+             source of truth for it (a manifest value can't be swapped at
+             runtime from Dart; test/platform/manifest_xml_test.dart checks
+             the two stay identical).
              ios/Runner/Info.plist's GADApplicationIdentifier intentionally
-             carries this same value / see the comment there. -->
+             does NOT carry this value: AdMob registers each platform as a
+             separate app, no iOS AdMob app has been registered yet, and
+             iOS stays on Google's public test App ID / see the comment
+             there. -->
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713" />
+            android:value="ca-app-pub-2873615858472032~3841448717" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

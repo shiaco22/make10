@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:make10/monetization/ads/ad_unit_ids.dart';
 
 /// `AndroidManifest.xml` と `Info.plist` は Dart のテストからは普段触らないが、
 /// 壊れても `flutter test` は緑のままで、Gradle が
@@ -15,6 +16,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// プロジェクトの主要な検証経路（`flutter test` と `flutter build web`）を
 /// すべてすり抜ける。ビルドできない環境でも壊れたことが分かるように、
 /// ここで最低限の構文だけ見張る。
+///
+/// さらに、`AndroidManifest.xml`/`Info.plist` の AdMob アプリ ID は
+/// `lib/monetization/ads/ad_unit_ids.dart` の [AdUnitIds] と手で同期する
+/// 値（マニフェスト/plist は静的ファイルなので Dart 側から実行時に読ませる
+/// ことができない）。この二重管理そのものは無くせないので、値が
+/// `ca-app-pub-<数字>~<数字>` の形であることだけでなく、[AdUnitIds] が
+/// 報告する値と一字一句一致することまでここで検査し、ズレを機械的に
+/// 検知できるようにする。
 void main() {
   const files = [
     'android/app/src/main/AndroidManifest.xml',
@@ -55,9 +64,11 @@ void main() {
     });
   }
 
-  test('AndroidManifest が AdMob のアプリ ID を宣言している', () {
-    // 値が無い・壊れていると AdMob SDK はプロセス起動時にクラッシュする。
-    // 単に存在するだけでなく、`ca-app-pub-…~…` の形であることまで見る。
+  test('AndroidManifest の AdMob アプリ ID が Android 本番の ID と一字一句一致する', () {
+    // 形（ca-app-pub-<数字>~<数字>）だけでなく、AdUnitIds.androidAppId
+    // （Android 本番のアプリ ID、プロダクトオーナーに確認済み）と完全に
+    // 一致することを見る。ここが唯一、マニフェストと Dart 側の定義元が
+    // ズレていないことを保証できる場所。
     final source =
         File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
     expect(source, contains('com.google.android.gms.ads.APPLICATION_ID'));
@@ -66,15 +77,41 @@ void main() {
       isTrue,
       reason: 'AdMob のアプリ ID が ca-app-pub-<数字>~<数字> の形になっていない',
     );
+    expect(
+      source,
+      contains('android:value="${AdUnitIds.androidAppId}"'),
+      reason: 'AndroidManifest.xml の com.google.android.gms.ads.APPLICATION_ID '
+          'が AdUnitIds.androidAppId (${AdUnitIds.androidAppId}) と一致しない。'
+          'lib/monetization/ads/ad_unit_ids.dart を変更したら、このファイルも'
+          '手で同期すること',
+    );
   });
 
-  test('Info.plist が AdMob のアプリ ID を宣言している', () {
+  test('Info.plist の AdMob アプリ ID はまだ Google 公式のテスト ID のまま', () {
+    // iOS 用の AdMob アプリはまだ登録されていない（AdUnitIds のクラス doc
+    // コメント参照）ので、本番 ID に差し替えてはいけない。Android 本番の
+    // ID を誤って使い回していないことも、この一致比較が防ぐ。
     final source = File('ios/Runner/Info.plist').readAsStringSync();
     expect(source, contains('GADApplicationIdentifier'));
     expect(
       RegExp(r'<string>ca-app-pub-\d+~\d+</string>').hasMatch(source),
       isTrue,
       reason: 'GADApplicationIdentifier の値が ca-app-pub-<数字>~<数字> の形になっていない',
+    );
+    expect(
+      source,
+      contains('<string>${AdUnitIds.testAppId}</string>'),
+      reason: 'Info.plist の GADApplicationIdentifier が Google 公式のテスト ID '
+          '(${AdUnitIds.testAppId}) のままになっていない。iOS 用の AdMob '
+          'アプリはまだ登録されていないので、本番 ID（まして Android のもの）'
+          'に差し替えてはいけない',
+    );
+    expect(
+      source,
+      isNot(contains(AdUnitIds.androidAppId)),
+      reason: 'Info.plist に Android 本番の AdMob アプリ ID が混入している。'
+          'iOS 用の AdMob アプリはまだ存在しないので、Android の本番 ID を '
+          'iOS で使い回すのは誤設定になる',
     );
   });
 }

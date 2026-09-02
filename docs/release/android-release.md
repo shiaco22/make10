@@ -155,7 +155,7 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 - [ ] `pubspec.yaml` の `version` を上げた（**versionCode は前回より必ず大きく**）
 - [ ] `.aab` の署名者がアップロード鍵と一致する
 - [ ] `targetSdk = 36`（2026-08-31 以降、Play の新規アプリ・更新の必須要件）
-- [ ] **AdMob が本番 ID になっている**（`AdUnitIds.productionIdsConfigured` が true）
+- [ ] **AdMob が本番 ID になっている**（`AdUnitIds.androidProductionIdsConfigured` が true）
 - [ ] **Play Console に課金商品 2 つを作成し、有効化した**
 - [ ] データセーフティで「データを収集する」を申告した（広告 SDK があるため）
 - [ ] 広告の有無で「はい」を選んだ
@@ -180,29 +180,56 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
 
 ### 6-1. AdMob の本番 ID に差し替える
 
-現在の ID は Google が公開しているテスト用で、AdMob アカウントが無くても
-安全に動く代わりに、**必ずテスト広告しか返さない**。収益は発生しない。
+**Android は完了。iOS は未着手** — AdMob はプラットフォームごとに別々の
+「アプリ」としてアプリ ID・広告ユニット ID を発行するため、Android 用の
+本番 ID を受け取れても iOS はまだ何も変わらない。以下に両方の状態を記録する。
 
-1. [AdMob](https://admob.google.com/) でアカウントを作り、アプリを登録する
-   （Play で未公開のうちは「ストアに登録されていない」を選んで先に作れる）
-2. インタースティシャル広告ユニットを1つ作る
-3. 受け取った ID を3箇所に入れる。定義元は
-   `lib/monetization/ads/ad_unit_ids.dart`:
-   - `_prodInterstitialUnitId` に広告ユニット ID
-   - `productionIdsConfigured` を `true` に
-   - `androidAppId` にアプリ ID
-4. `android/app/src/main/AndroidManifest.xml` の
-   `com.google.android.gms.ads.APPLICATION_ID` を同じアプリ ID に更新する
-   （マニフェストの静的値なので、Dart 側から実行時に差し替えられない）
-5. `ios/Runner/Info.plist` の `GADApplicationIdentifier` も同様に更新する
-6. `flutter test` を通す（`test/platform/manifest_xml_test.dart` が
-   ID の形式を検査している）
+#### Android（完了）
 
-> XML コメントに `--` を書くとマニフェストのパースが壊れる。過去に一度踏んで
-> いるので、コメントを足すときは注意する。テストが見張っている。
+プロダクトオーナーから受領・確認済みの本番 ID を
+`lib/monetization/ads/ad_unit_ids.dart` に設定済み:
+- AdMob アプリ ID: `ca-app-pub-2873615858472032~3841448717`
+- インタースティシャル広告ユニット ID: `ca-app-pub-2873615858472032/2546502748`
+  （AdMob 上のユニット名 `make10-interstitia`、フォーマット Interstitial）
+
+`android/app/src/main/AndroidManifest.xml` の
+`com.google.android.gms.ads.APPLICATION_ID` も同じアプリ ID に更新済み。
+マニフェストは静的値で Dart 側から実行時に差し替えられないので、
+`test/platform/manifest_xml_test.dart` が `AdUnitIds.androidAppId` との
+一字一句の一致を検査し、ズレを機械的に検知する。
 
 アプリを Play に公開したあと、AdMob 側でそのアプリを Play のリスティングと
 **リンクする**こと。リンクしないと広告配信が制限されることがある。
+
+#### iOS（未着手 — AdMob 側でアプリ自体が未登録）
+
+Android 用のアプリ ID・広告ユニット ID を iOS で使い回すことはできない
+（AdMob がプラットフォーム不一致のリクエストを拒否しうるうえ、未検証の
+ビルドの裏に実在のパブリッシャーアカウントを晒すことになる）。iOS 版は
+これまでビルドも実行もされたことがなく（macOS + Xcode が要る）、AdMob
+アプリも未登録なので、`lib/monetization/ads/ad_unit_ids.dart` は iOS 向けに
+常に Google 公式のテスト ID を返す（意図的な現状で見落としではない —
+同ファイルのクラス doc コメント参照）。`ios/Runner/Info.plist` の
+`GADApplicationIdentifier` も同じ理由でテスト ID のまま。
+
+iOS 版を公開するときにやること:
+1. [AdMob](https://admob.google.com/) で **iOS 用に新規**アプリを登録する
+   （App Store で未公開のうちは「ストアに登録されていない」を選んで
+   先に作れる）
+2. インタースティシャル広告ユニットを1つ作る
+3. 受け取った iOS 用のアプリ ID と広告ユニット ID を
+   `lib/monetization/ads/ad_unit_ids.dart` に追加する（同ファイルのクラス
+   doc コメントに追加手順がある）。`interstitialUnitId` に iOS 用の本番
+   分岐を足すことになる
+4. `ios/Runner/Info.plist` の `GADApplicationIdentifier` を新しい iOS
+   アプリ ID に更新し、そこのコメントも書き換える
+5. `test/platform/manifest_xml_test.dart` の Info.plist 側のテスト
+   （現状は「テスト ID のままであること」を検査している）を、新しい iOS
+   本番 ID との一致を見るように更新する
+6. `flutter test` を通す
+
+> XML コメントに `--` を書くとマニフェストのパースが壊れる。過去に一度踏んで
+> いるので、コメントを足すときは注意する。テストが見張っている。
 
 ### 6-2. Play Console にアプリ内購入の商品を作る
 

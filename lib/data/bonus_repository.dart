@@ -23,6 +23,18 @@ class BonusRepository extends ChangeNotifier {
   BonusGrid? _inProgressGrid;
   int _inProgressScore = 0;
 
+  /// 直前の [_save] 呼び出しを表す。次の [_save] はこれへ鎖状につなぐ。
+  ///
+  /// [BonusSession.tap] は 1 手ごとに `saveProgress(...).ignore()` を
+  /// await せず呼ぶ。`_save` には await が 2 箇所(`getInstance` と
+  /// `setString`)あるので、これが無いと重なった呼び出しがストレージへ
+  /// 発行される順序も完了する順序もばらばらになり得る。実機の
+  /// プラットフォームチャネル越しの書き込みでは、後から発行した新しい
+  /// 盤面より前に発行した古い盤面の方が先に確定してしまう(=古い盤面が
+  /// 後から上書きして残る)ことがあり得るため、ここで直前の書き込みが
+  /// 確定してから次を発行するようにする。
+  Future<void> _writeQueue = Future<void>.value();
+
   int get bestScore => _bestScore;
   BonusTicket get ticket => _ticket;
   BonusGrid? get inProgressGrid => _inProgressGrid;
@@ -115,7 +127,23 @@ class BonusRepository extends ChangeNotifier {
     return improved;
   }
 
-  Future<void> _save() async {
+  /// [_writeQueue] へ鎖状につないでから書き込む。呼び出しごとに独立して
+  /// 実行すると、重なった呼び出しがストレージへ発行される順序も完了する
+  /// 順序もばらばらになり得る([_writeQueue] のコメント参照)。
+  ///
+  /// 直前の書き込みが失敗していても `catchError` で握りつぶしてから
+  /// つなぐ。ここで握りつぶさずに前回の失敗をそのまま次へ渡すと、
+  /// 失敗した Future が鎖に残り続け、それ以降の保存が全部巻き添えで
+  /// 失敗するようになってしまう。この呼び出し自身の失敗は握りつぶさず、
+  /// 返す [Future] を通じて呼び出し元(`saveProgress` など)にそのまま
+  /// 伝える。
+  Future<void> _save() {
+    final scheduled = _writeQueue.catchError((_) {}).then((_) => _writeNow());
+    _writeQueue = scheduled;
+    return scheduled;
+  }
+
+  Future<void> _writeNow() async {
     final prefs = await SharedPreferences.getInstance();
     final grid = _inProgressGrid;
     await prefs.setString(

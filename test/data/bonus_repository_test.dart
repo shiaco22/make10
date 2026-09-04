@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:make10/data/bonus_repository.dart';
 import 'package:make10/domain/bonus/bonus_grid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 BonusGrid gridOf(List<List<int>> rows) =>
     BonusGrid.of([for (final row in rows) ...row]);
@@ -16,10 +18,97 @@ BonusGrid sampleGrid() => gridOf([
       [3, 1, 2, 3, 1],
     ]);
 
+BonusGrid advancedGrid() => gridOf([
+      [2, 2, 3, 1, 2],
+      [3, 1, 2, 3, 1],
+      [2, 3, 1, 2, 3],
+      [1, 2, 3, 1, 2],
+      [3, 1, 2, 3, 1],
+    ]);
+
 Future<BonusRepository> loaded() async {
   final repo = BonusRepository();
   await repo.load();
   return repo;
+}
+
+/// `setValue` の確定をテストから握れる [SharedPreferencesStorePlatform]。
+///
+/// 標準の [InMemorySharedPreferencesStore] は `setValue` を await 抜きで
+/// 即座に確定させるので、呼び出しを重ねても常に呼び出し順に反映され、
+/// 「ストレージ層に複数の書き込みが同時に issue されている」状況(実機
+/// では Android/iOS のプラットフォームチャネル越しの書き込みで起こり
+/// 得る。完了の順序が入れ替わると、より新しいデータをより古いデータが
+/// 上書きしてしまう)を再現できない。ここでは `setValue` の確定を
+/// [releaseOldest] を呼ぶまで保留し、テストが「いま何件が確定を待って
+/// いるか」を [pendingCount] で観測できるようにする。
+class _ControllableStore extends InMemorySharedPreferencesStore {
+  _ControllableStore() : super.empty();
+
+  final List<_PendingWrite> _pending = [];
+
+  /// まだ [releaseOldest] していない `setValue` 呼び出しの数。
+  ///
+  /// 直列化されていれば、この値が 2 以上になることは無い —— 前の
+  /// 書き込みが確定するまで次の setValue が呼ばれないため。
+  int get pendingCount => _pending.length;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) {
+    final completer = Completer<bool>();
+    _pending.add(_PendingWrite(valueType, key, value, completer));
+    return completer.future;
+  }
+
+  /// もっとも先に呼ばれた(まだ確定していない)`setValue` を今ストレージへ
+  /// 確定させる。
+  Future<void> releaseOldest() async {
+    final write = _pending.removeAt(0);
+    await super.setValue(write.valueType, write.key, write.value);
+    write.completer.complete(true);
+  }
+}
+
+class _PendingWrite {
+  _PendingWrite(this.valueType, this.key, this.value, this.completer);
+  final String valueType;
+  final String key;
+  final Object value;
+  final Completer<bool> completer;
+}
+
+/// 最初の [failCount] 回の `setValue` を失敗させる
+/// [SharedPreferencesStorePlatform]。
+class _FlakyStore extends InMemorySharedPreferencesStore {
+  _FlakyStore(this.failCount) : super.empty();
+
+  final int failCount;
+  int _calls = 0;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) async {
+    _calls++;
+    if (_calls <= failCount) {
+      throw StateError('setValue failed (test)');
+    }
+    return super.setValue(valueType, key, value);
+  }
+}
+
+/// [condition] が true になるまで、最大 [maxTurns] 回イベントループを
+/// 1 ティック回す。ポーリングの往復を各テストで書き直さずに済ませる。
+Future<void> _pumpUntil(bool Function() condition, {int maxTurns = 50}) async {
+  for (var i = 0; i < maxTurns && !condition(); i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+/// イベントループを [turns] 回だけ回す。条件を待つのではなく、
+/// 「これ以上進まないこと」を確かめたいときに使う。
+Future<void> _pump(int turns) async {
+  for (var i = 0; i < turns; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
 }
 
 void main() {
@@ -206,6 +295,100 @@ void main() {
       expect(repo.bestScore, 700);
       // 破棄した後も盤面に触れても落ちない。
       expect(repo.inProgressGrid, isNull);
+    });
+  });
+
+  group('保存の順序', () {
+    test('await せずに複数回呼んでも、確定するのは最後に呼んだ盤面', () async {
+      // 標準の InMemorySharedPreferencesStore は setValue を await 抜きで
+      // 即座に確定させるため、この単純な「連続して呼ぶだけ」のケースは
+      // 直列化する前のコードでも実は通ってしまう(呼び出しが 1 度も
+      // await で割り込まれないので、すべての同期的なフィールド代入が
+      // 先に完了してから初めて非同期側が読みに行くため)。ここでは
+      // 「直列化してもこの結果を壊していない」ことを固定するためのもので、
+      // 直列化そのものが効くかどうかは下のテストで見る。
+      final repo = await loaded();
+      final first = repo.saveProgress(sampleGrid(), 10);
+      final second = repo.saveProgress(advancedGrid(), 20);
+      await first;
+      await second;
+
+      final reloaded = await loaded();
+      expect(reloaded.inProgressGrid!.cells, advancedGrid().cells);
+      expect(reloaded.inProgressScore, 20);
+    });
+
+    test('2 件目の書き込みは、1 件目がストレージへ確定するまで発行されない', () async {
+      // BonusSession.tap は saveProgress(...).ignore() を await せずに
+      // 1 手ごとに呼ぶ。_save() には await が 2 箇所あるので、直列化して
+      // いなければ、2 回の setValue が同時に「発行済みで未確定」になり
+      // 得る。実機ではその 2 つがプラットフォームチャネル越しにどちらの
+      // 順で確定するか保証が無く、完了が入れ替わればより新しいデータを
+      // より古いデータが上書きする。直列化さえできていれば、ストレージに
+      // 同時に 2 件以上の書き込みが issue されること自体が無くなるので、
+      // 完了順の入れ替わりは構造的に起こり得ない —— それをここで見る。
+      final store = _ControllableStore();
+      SharedPreferencesStorePlatform.instance = store;
+      SharedPreferences.resetStatic();
+
+      final repo = BonusRepository();
+      await repo.load();
+
+      // 1 件目(古いデータ)。setValue が発行されるまで待つ。
+      final first = repo.saveProgress(sampleGrid(), 10);
+      await _pumpUntil(() => store.pendingCount >= 1);
+      expect(store.pendingCount, 1);
+
+      // 2 件目(新しいデータ)を、1 件目を確定させる前に呼ぶ。
+      final second = repo.saveProgress(advancedGrid(), 20);
+      await _pump(10);
+      expect(store.pendingCount, 1,
+          reason: '直列化されておらず、1 件目の確定前に 2 件目が発行された');
+
+      // 1 件目を確定させる。鎖でつながれていれば、これで初めて 2 件目が
+      // 発行される。
+      await store.releaseOldest();
+      await _pumpUntil(() => store.pendingCount >= 1);
+      await store.releaseOldest();
+
+      await first;
+      await second;
+
+      // 別プロセスでの再読み込みを模すため、インメモリの
+      // SharedPreferences キャッシュを介さず、ストレージそのものから
+      // 読み直す。
+      SharedPreferences.resetStatic();
+      final reloaded = BonusRepository();
+      await reloaded.load();
+      expect(reloaded.inProgressGrid!.cells, advancedGrid().cells);
+      expect(reloaded.inProgressScore, 20);
+    });
+
+    test('書き込みが失敗しても、以降の保存を巻き添えにしない', () async {
+      // 最初の 1 回だけ失敗するストアを使う。直列化の実装が「前回の
+      // Future をそのまま次の then に渡す」だけだと、失敗した Future が
+      // 鎖に残り続け、それ以降の保存が全部巻き添えで失敗する。
+      final store = _FlakyStore(1);
+      SharedPreferencesStorePlatform.instance = store;
+      SharedPreferences.resetStatic();
+
+      final repo = BonusRepository();
+      await repo.load();
+
+      // 1 回目は失敗する。BonusSession.tap の .ignore() と同じ扱いで
+      // ここでも例外は握りつぶす — 失敗そのものはこのテストの対象外。
+      await repo.saveProgress(sampleGrid(), 10).catchError((_) => null);
+
+      // 2 回目は成功するはず。直前の失敗が鎖に残っていれば、これも
+      // 巻き添えで失敗する。
+      await repo.saveProgress(advancedGrid(), 20);
+
+      SharedPreferences.resetStatic();
+      final reloaded = BonusRepository();
+      await reloaded.load();
+      expect(reloaded.inProgressGrid!.cells, advancedGrid().cells,
+          reason: '直前の書き込み失敗が以降の保存を巻き添えにした');
+      expect(reloaded.inProgressScore, 20);
     });
   });
 }

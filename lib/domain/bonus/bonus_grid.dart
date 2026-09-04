@@ -1,3 +1,7 @@
+import 'dart:math';
+
+import 'spawn_rule.dart';
+
 /// 盤面の一辺のマス数。
 const int kBonusSize = 5;
 
@@ -73,6 +77,55 @@ class BonusGrid {
   /// [index] をタップできるか。同値の隣接が 1 つも無ければ打てない。
   bool canTap(int index) => componentAt(index).length >= 2;
 
+  /// [index] をタップした結果を返す。ルール上打てない手なら null
+  /// (盤面は一切変化しない — 既存 `Board.apply` と同じ契約)。
+  ///
+  /// [random] は補充に使う。盤面自体は不変なので、乱数は呼び出しごとに
+  /// 外から渡す(`PuzzleRepository` と同じ、注入して再現可能にする流儀)。
+  BonusMerge? tap(int index, Random random) {
+    final component = componentAt(index);
+    if (component.length < 2) return null;
+
+    final value = cells[index];
+    final count = component.length;
+    final next = List<int>.of(cells);
+    for (final i in component) {
+      next[i] = kBonusEmpty;
+    }
+    next[index] = value + 1;
+
+    if (value + 1 >= kBonusTarget) {
+      // クリア時は重力も補充も走らせない。作った 10 が見えている盤面のまま
+      // 結果画面に進むため(仕様 §2.5)。空きマスが残るが、この盤面から
+      // 次の手を打つことはない。
+      return BonusMerge(
+        grid: BonusGrid._(next),
+        gained: value * count,
+        mergedValue: value,
+        mergedCount: count,
+        cleared: true,
+      );
+    }
+
+    _applyGravity(next);
+    // 補充に使う最大値は「重力の直後・補充の前」に 1 度だけ決め、補充中は
+    // 更新しない(仕様 §2.4)。1 手のあいだ補充の分布が揺れないようにする。
+    final boardMax = next.reduce((a, b) => a > b ? a : b);
+    for (var i = 0; i < kBonusCells; i++) {
+      if (next[i] == kBonusEmpty) {
+        next[i] = spawnValue(boardMax, random);
+      }
+    }
+
+    return BonusMerge(
+      grid: BonusGrid._(next),
+      gained: value * count,
+      mergedValue: value,
+      mergedCount: count,
+      cleared: false,
+    );
+  }
+
   /// 盤面のどこかに合法手があるか。
   ///
   /// 連結成分を数える必要はない。同値の隣接が 1 組でもあればそこが合法手
@@ -85,5 +138,49 @@ class BonusGrid {
       }
     }
     return false;
+  }
+}
+
+/// 1 手の結果。
+class BonusMerge {
+  /// 手を適用した後の盤面。
+  final BonusGrid grid;
+
+  /// この手で得た点数(`mergedValue * mergedCount`)。
+  final int gained;
+
+  /// まとめたマスの数字。
+  final int mergedValue;
+
+  /// まとめたマスの数(タップしたマス自身を含む)。
+  final int mergedCount;
+
+  /// この手で [kBonusTarget] ができたか。
+  final bool cleared;
+
+  const BonusMerge({
+    required this.grid,
+    required this.gained,
+    required this.mergedValue,
+    required this.mergedCount,
+    required this.cleared,
+  });
+}
+
+/// 列ごとに重力を適用する。空でないマスが順序を保って下端へ落ち、
+/// 空きは上端に集まる。[cells] を直接書き換える。
+void _applyGravity(List<int> cells) {
+  for (var col = 0; col < kBonusSize; col++) {
+    var write = kBonusSize - 1;
+    for (var row = kBonusSize - 1; row >= 0; row--) {
+      final value = cells[row * kBonusSize + col];
+      if (value != kBonusEmpty) {
+        cells[write * kBonusSize + col] = value;
+        write--;
+      }
+    }
+    for (var row = write; row >= 0; row--) {
+      cells[row * kBonusSize + col] = kBonusEmpty;
+    }
   }
 }

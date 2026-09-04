@@ -14,6 +14,13 @@ class ResultScreen extends StatelessWidget {
   final VoidCallback onRetry;
   final VoidCallback onHome;
 
+  /// スコアの下に差し込む告知。省略時（null）は何も描かず、今日通りの
+  /// 表示になる。
+  ///
+  /// ボーナスゲームの解禁をここに出す。リザルトは既にスコアを見せ終えた
+  /// 場所なので、次に何ができるようになったかを伝えるのに適している。
+  final Widget? notice;
+
   const ResultScreen({
     super.key,
     required this.score,
@@ -22,6 +29,7 @@ class ResultScreen extends StatelessWidget {
     required this.isSaving,
     required this.onRetry,
     required this.onHome,
+    this.notice,
   });
 
   @override
@@ -49,6 +57,10 @@ class ResultScreen extends StatelessWidget {
                         : Text('ベスト $bestScore',
                             style: theme.textTheme.titleMedium),
               ),
+              if (notice != null) ...[
+                const SizedBox(height: 16),
+                notice!,
+              ],
               const SizedBox(height: 32),
               FilledButton(onPressed: onRetry, child: const Text('もう一度')),
               const SizedBox(height: 8),

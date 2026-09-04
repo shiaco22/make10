@@ -27,12 +27,24 @@ class TimeAttackScreen extends StatefulWidget {
   /// 混ぜてはいけない。
   final Future<void> Function()? onLeavingResult;
 
+  /// 時間切れでスコアが確定した直後に、一度だけ呼ぶフック。
+  ///
+  /// ボーナスゲームの解禁判定をここに繋ぐ。[onLeavingResult]（広告）とは
+  /// 目的が違うので混ぜない — あちらはリザルトを**離れる**操作に紐づく
+  /// のに対し、こちらはリザルトを**出す**瞬間に紐づく。
+  final Future<void> Function(int score)? onFinished;
+
+  /// リザルトのスコアの下に差し込む告知（[ResultScreen.notice]）。
+  final Widget? resultNotice;
+
   const TimeAttackScreen({
     super.key,
     required this.session,
     required this.onExit,
     this.onRetry,
     this.onLeavingResult,
+    this.onFinished,
+    this.resultNotice,
   });
 
   @override
@@ -43,6 +55,13 @@ class _TimeAttackScreenState extends State<TimeAttackScreen>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   Duration _last = Duration.zero;
+
+  /// [widget.onFinished] を二重に呼ばないための印。
+  ///
+  /// build は AnimatedBuilder の中にあり、リザルト表示中も
+  /// notifyListeners のたびに何度も走る（保存の完了でも走る）。
+  /// 解禁は 1 回の勝負に 1 度だけ判定すべきなので、ここで押さえる。
+  bool _finishedNotified = false;
 
   @override
   void initState() {
@@ -87,6 +106,17 @@ class _TimeAttackScreenState extends State<TimeAttackScreen>
       animation: widget.session,
       builder: (context, _) {
         if (widget.session.isOver) {
+          if (!_finishedNotified) {
+            _finishedNotified = true;
+            final hook = widget.onFinished;
+            if (hook != null) {
+              // build の中で状態を変える呼び出しをしないよう、フレームの
+              // 後に回す。解禁は次のフレームで反映されればよい。
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                hook(widget.session.score);
+              });
+            }
+          }
           return ResultScreen(
             score: widget.session.score,
             bestScore: widget.session.stats
@@ -94,6 +124,7 @@ class _TimeAttackScreenState extends State<TimeAttackScreen>
                 .bestScore,
             bestUpdated: widget.session.bestUpdated,
             isSaving: widget.session.isSavingResult,
+            notice: widget.resultNotice,
             onRetry: () => _advanceFromResult(widget.onRetry ?? widget.onExit),
             onHome: () => _advanceFromResult(widget.onExit),
           );

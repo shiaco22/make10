@@ -96,6 +96,7 @@ class HomeScreen extends ConsumerWidget {
   ) async {
     final coordinator =
         await ref.read(interstitialAdCoordinatorProvider.future);
+    final bonus = await ref.read(bonusRepositoryProvider.future);
     if (!context.mounted) return;
     final session = TimeAttackSession(
       puzzles: puzzles,
@@ -116,6 +117,11 @@ class HomeScreen extends ConsumerWidget {
                 );
               },
               onLeavingResult: coordinator.onLeavingTimeAttackResult,
+              onFinished: (score) async {
+                if (score < kBonusUnlockClears) return;
+                await bonus.earn(bonusDateKey(DateTime.now()));
+              },
+              resultNotice: _BonusUnlockNotice(bonus: bonus),
             ),
           ),
         )
@@ -428,6 +434,41 @@ class _BonusEntryState extends ConsumerState<_BonusEntry> {
       onPressed:
           enabled && !_starting ? () => _start(context, bonus) : null,
       child: Text(label),
+    );
+  }
+}
+
+/// タイムアタックのリザルトに出す、ボーナスゲーム解禁の告知。
+///
+/// [BonusRepository] を購読しているので、`onFinished` が非同期に
+/// `earn` を終えた時点で自動的に現れる。5 問未満だった勝負では
+/// `earn` が呼ばれないので、何も描かない。
+class _BonusUnlockNotice extends StatelessWidget {
+  final BonusRepository bonus;
+
+  const _BonusUnlockNotice({required this.bonus});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: bonus,
+      builder: (context, _) {
+        final today = bonusDateKey(DateTime.now());
+        if (!bonus.ticket.isAvailable(today)) return const SizedBox.shrink();
+        final theme = Theme.of(context);
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'ボーナスゲーム解禁!',
+              style: theme.textTheme.titleMedium
+                  ?.copyWith(color: theme.colorScheme.primary),
+            ),
+            const SizedBox(height: 4),
+            Text('ホームから遊べます', style: theme.textTheme.bodySmall),
+          ],
+        );
+      },
     );
   }
 }

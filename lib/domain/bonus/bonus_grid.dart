@@ -53,6 +53,24 @@ class BonusGrid {
     return BonusGrid._(List<int>.of(cells));
   }
 
+  /// 新しいゲームの初期盤面を配る(仕様 §2.7)。
+  ///
+  /// 各マスを独立に 1..3 から引く。`spawnValue` に `boardMax = 4` を
+  /// 渡すのがその範囲にあたる。
+  ///
+  /// **`boardMax = 1` で埋めてはいけない。** 補充の範囲は
+  /// `1 .. max(1, boardMax - 1)` なので、1 では 25 マス全部が 1 になり、
+  /// 最初のタップが 25 マスを一括マージして 2 を 1 個作るだけの退化した
+  /// 開幕になる。
+  ///
+  /// 3 値であれば同値が隣接しない配置(3 彩色に相当する並び)が存在する
+  /// ため、配った直後に詰み検査を通す。実測では 300 ゲーム中 0 回しか
+  /// 作動しなかったが、検査は 1 回で済み、外した場合は開幕が完全に詰む。
+  factory BonusGrid.deal(Random random) {
+    final cells = List<int>.generate(kBonusCells, (_) => spawnValue(4, random));
+    return BonusGrid._(cells).repairIfStuck(random).grid;
+  }
+
   int valueAt(int row, int col) => cells[row * kBonusSize + col];
 
   /// 盤面の最大値。空きマス([kBonusEmpty])は 0 なので結果に影響しない。
@@ -117,13 +135,72 @@ class BonusGrid {
       }
     }
 
+    final repair = BonusGrid._(next).repairIfStuck(random);
+
     return BonusMerge(
-      grid: BonusGrid._(next),
+      grid: repair.grid,
       gained: value * count,
       mergedValue: value,
       mergedCount: count,
       cleared: false,
+      repairedCells: repair.changedCells,
     );
+  }
+
+  /// 詰んでいれば修復した盤面を、詰んでいなければ自分自身を返す。
+  ///
+  /// 修復は**値が低いマスから順に引き直す**。25 マスすべてを引き直しても
+  /// 合法手ができなければ、盤面全体を並べ替える。
+  ///
+  /// 全並べ替えを既定にしない理由は実測にある(仕様 §3.2)。全並べ替えは
+  /// 1 回で 25 マス中 21.2 マスを書き換え、最大値のマスの位置を 99% の
+  /// 確率で壊す。詰みは 8 タップに 1 回起きるので、それではプレイヤーが
+  /// 積み上げたものが絶えず散らされる。低い値から引き直す方式は 3.0 マス
+  /// しか変えず、最大値のマスは一度も動かなかった。
+  ///
+  /// 最後の全並べ替えは必ず成功する。25 マスに対して値は 10 種類以下
+  /// なので鳩の巣原理により必ず重複があり、重複がある限りそれらを
+  /// 隣接させる並べ替えが存在する。実測では 300 ゲーム・3,965 回の修復で
+  /// ここへ到達した回数は 0 回だったが、引き直しの終了は確率に依存する
+  /// ため、保証を運に委ねないよう残している。
+  BonusRepair repairIfStuck(Random random) {
+    if (hasLegalMove) return BonusRepair(this, 0);
+
+    final next = List<int>.of(cells);
+    final boardMax = maxValue;
+    // 値が低い順。同値のマスの間の順序は乱数で散らし、毎回同じ隅から
+    // 引き直して偏るのを避ける。タイブレークは `List.sort` に渡す前に
+    // 1 度だけ引いた乱数の並べ替えを使う — `compare` の中で毎回
+    // `random.nextInt` を引いて符号を返すと、同じ 2 要素の比較結果が
+    // 呼び出しのたびに変わり得る(比較関数の一貫性が壊れる)。
+    // `List.sort` は一貫性のない比較関数に対する結果を保証しないため、
+    // 値の昇順が崩れる恐れがある。
+    final tiebreak = List<int>.generate(kBonusCells, (i) => i)..shuffle(random);
+    final order = List<int>.generate(kBonusCells, (i) => i)
+      ..sort((a, b) {
+        final byValue = cells[a].compareTo(cells[b]);
+        return byValue != 0 ? byValue : tiebreak[a].compareTo(tiebreak[b]);
+      });
+
+    for (final i in order) {
+      next[i] = spawnValue(boardMax, random);
+      final candidate = BonusGrid._(next);
+      if (candidate.hasLegalMove) {
+        return BonusRepair(candidate, _changedCells(cells, next));
+      }
+    }
+
+    // ここへは実測で一度も到達していないが、引き直しの終了は確率に依存
+    // するので、必ず成功する手段を最後に置く。
+    final shuffled = List<int>.of(next);
+    for (var attempt = 0; attempt < 1000; attempt++) {
+      shuffled.shuffle(random);
+      final candidate = BonusGrid._(shuffled);
+      if (candidate.hasLegalMove) {
+        return BonusRepair(candidate, _changedCells(cells, shuffled));
+      }
+    }
+    throw StateError('盤面の修復に失敗した: $cells');
   }
 
   /// 盤面のどこかに合法手があるか。
@@ -158,12 +235,20 @@ class BonusMerge {
   /// この手で [kBonusTarget] ができたか。
   final bool cleared;
 
+  /// この手の補充後に詰みを修復して書き換えたマス数。0 なら修復していない。
+  ///
+  /// 詰みは 1 ゲームに 13 回、およそ 8 タップに 1 回起きる(仕様 §3.2)。
+  /// 無言で盤面を書き換えると理不尽に見えるので、UI が通知を出せるように
+  /// 手の結果として返す。
+  final int repairedCells;
+
   const BonusMerge({
     required this.grid,
     required this.gained,
     required this.mergedValue,
     required this.mergedCount,
     required this.cleared,
+    this.repairedCells = 0,
   });
 }
 
@@ -183,4 +268,22 @@ void _applyGravity(List<int> cells) {
       cells[row * kBonusSize + col] = kBonusEmpty;
     }
   }
+}
+
+/// 詰みの修復結果。
+class BonusRepair {
+  final BonusGrid grid;
+
+  /// 修復で書き換えたマス数。0 なら詰んでいなかった。
+  final int changedCells;
+
+  const BonusRepair(this.grid, this.changedCells);
+}
+
+int _changedCells(List<int> before, List<int> after) {
+  var count = 0;
+  for (var i = 0; i < before.length; i++) {
+    if (before[i] != after[i]) count++;
+  }
+  return count;
 }

@@ -198,14 +198,7 @@ class HomeScreen extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => StatsScreen(stats: stats),
-                        ),
-                      ),
-                      child: const Text('統計'),
-                    ),
+                    _StatsEntry(stats: stats),
                     _BonusEntry(scale: scale),
                     // Web では google_mobile_ads/in_app_purchase のどちらも
                     // 常に「何もしない」実装 (WebAdGateway/WebBillingGateway)
@@ -469,6 +462,31 @@ class _BonusUnlockNotice extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// ホーム画面の統計への入口。
+///
+/// [StatsScreen] にボーナスのベストスコアも渡したいが、
+/// [bonusRepositoryProvider] は非同期なので、ここで解決してから積む。
+/// 読み込みが終わっていなければボーナスの欄を省いて開く（統計そのものは
+/// 見られるべきなので、ボーナスの都合で入口を塞がない）。
+class _StatsEntry extends ConsumerWidget {
+  final StatsRepository stats;
+
+  const _StatsEntry({required this.stats});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final bonus = ref.watch(bonusRepositoryProvider).value;
+    return TextButton(
+      onPressed: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (context) => StatsScreen(stats: stats, bonus: bonus),
+        ),
+      ),
+      child: const Text('統計'),
     );
   }
 }

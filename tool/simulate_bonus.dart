@@ -26,14 +26,10 @@ class BonusSimRun {
   final int cellsChanged;
   final int topMoved;
 
-  /// 全並べ替え(`repairIfStuck` の手順 2)へ落ちた回数 —— **常に 0**。
+  /// 全並べ替え(`repairIfStuck` の手順 2)へ落ちた回数。
   ///
-  /// `BonusRepair` は最終盤面と書き換わったマス数だけを返し、手順 1
-  /// (低い値からの引き直し)で解決したか手順 2(全並べ替え)まで落ちたかを
-  /// 区別する情報を公開しない。書き換わったマス数からの推定も試したが、
-  /// 手順 1 がたまたま多くのマスを引き直してから成功する場合と区別が
-  /// つかず、しきい値をどこに置いても誤検出が出た(`_play` 参照)。
-  /// この値は測定ではなく、単に「区別できない」ことを表す据え置きである。
+  /// `BonusMerge.usedFullShuffle`(`BonusRepair.usedFullShuffle` をそのまま
+  /// 運んだもの)を直接数えた実測値(仕様 §2.6・§11.5)。
   final int fallbacks;
 
   const BonusSimRun({
@@ -124,8 +120,7 @@ BonusSimRun _play(Random random, String policy, {int cap = 20000}) {
   var repairs = 0;
   var cellsChanged = 0;
   var topMoved = 0;
-  // 常に 0。BonusSimRun.fallbacks のフィールドコメント参照。
-  const fallbacks = 0;
+  var fallbacks = 0;
 
   while (taps < cap) {
     final options = _legalTaps(grid);
@@ -159,6 +154,7 @@ BonusSimRun _play(Random random, String policy, {int cap = 20000}) {
     if (merge.repairedCells > 0) {
       repairs++;
       cellsChanged += merge.repairedCells;
+      if (merge.usedFullShuffle) fallbacks++;
       // タップした成分自体が最大値だった場合、それが消えるのは修復では
       // なくマージ自身の仕業なので比較の対象から外す。
       if (!merge.cleared && tappedValue != topBefore) {
@@ -168,14 +164,6 @@ BonusSimRun _play(Random random, String policy, {int cap = 20000}) {
           topMoved++;
         }
       }
-      // 全並べ替え(手順 2)に落ちたかどうかは、ここでは判定していない
-      // (下記 `fallbacks` のフィールドコメント参照)。書き換わったマス数
-      // だけで判定を試みたが、手順 1 が(低い値から順に)たまたま多くの
-      // マスを引き直してから成功する場合と区別がつかず、しきい値を
-      // どこに置いても誤検出が出た(seed=7, runs=100 で試したところ、
-      // しきい値 12 マスで 13 件を「フォールバック」と誤検出した —
-      // 仕様が前提とする「ほぼ 0 件」と比べて明らかに過大)。誤った実測値を
-      // 出すよりは「測れていない」と明示する方を選んだ。
     }
 
     if (merge.cleared) {
@@ -240,7 +228,6 @@ BonusSimResult simulate({
     cellsChangedPerRepair:
         totalRepairs == 0 ? 0 : totalChanged / totalRepairs,
     repairsTopMoved: results.fold(0, (a, r) => a + r.topMoved),
-    // 常に 0(未計測)。BonusSimRun.fallbacks のフィールドコメント参照。
     fallbacks: results.fold(0, (a, r) => a + r.fallbacks),
   );
 }
@@ -269,7 +256,7 @@ void main(List<String> args) {
   print('  1 回で書き換わるマス数: '
       '${scoreRun.cellsChangedPerRepair.toStringAsFixed(1)}');
   print('  最大値のマスが消えた  : ${scoreRun.repairsTopMoved} 回');
-  print('  全並べ替えへの落下    : ${scoreRun.fallbacks} 回(未計測、常に 0)');
+  print('  全並べ替えへの落下    : ${scoreRun.fallbacks} 回');
 
   if (scoreRun.wins != scoreRun.runs) {
     stderr.writeln('10 に到達しない試行があった: '

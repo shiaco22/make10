@@ -33,10 +33,17 @@ void main() {
           reason: '実測 ${result.cellsChangedPerRepair} マス、仕様 3.0 マス');
     }, timeout: const Timeout(Duration(minutes: 3)));
 
-    test('全並べ替えへのフォールバックに到達しない', () {
-      final result = simulate(runs: 100, seed: 7, policy: 'score');
-      expect(result.fallbacks, 0,
-          reason: '低い値の引き直しで解決せず全並べ替えに落ちた');
+    test('全並べ替えへのフォールバックは稀にしか起こらない(常に 0 ではない)', () {
+      // 仕様 §2.6・§11.5: `BonusMerge.usedFullShuffle` で実測すると、
+      // runs=300, seed=20260903 では詰みの修復 約 3,810 回のうち
+      // 1 回が手順 2(全並べ替え)まで落ちていた。0 回ではないと
+      // 分かっている以上 ==0 は主張しない。ここでは「稀」であることを、
+      // 実測値(1 回)に対して十分な余裕を持たせた上限で検証する。
+      final result = simulate(runs: 300, seed: 20260903, policy: 'score');
+      expect(result.fallbacks, lessThan(20),
+          reason: '実測 1 回(仕様 §11.5)に対して十分緩い上限。これを超えたら '
+              '手順 1(低い値からの引き直し)が退化している疑いがある: '
+              '実測 ${result.fallbacks} 回');
     }, timeout: const Timeout(Duration(minutes: 3)));
   });
 }

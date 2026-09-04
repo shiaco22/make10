@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:make10/domain/bonus/bonus_grid.dart';
 import 'package:make10/domain/bonus_ticket.dart';
 import 'package:make10/ui/bonus_game_screen.dart';
 import 'package:make10/ui/home_screen.dart';

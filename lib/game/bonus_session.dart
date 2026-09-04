@@ -29,13 +29,17 @@ class BonusSession extends ChangeNotifier {
 
   /// [grid] と [score] は新規なら `BonusGrid.deal(...)` と 0、再開なら
   /// [BonusRepository] に保存されていた値を渡す。
+  ///
+  /// `_grid` / `_score` は `this._grid` の initializing formal にしない
+  /// — そのまま使うと名前付き引数がフィールド名の `_grid` / `_score` に
+  /// なり、private な内部表現が公開 API に漏れる。
   BonusSession({
     required this.repository,
     required BonusGrid grid,
     required int score,
     Random? random,
-  })  : _grid = grid,
-        _score = score,
+  })  : _grid = grid, // ignore: prefer_initializing_formals
+        _score = score, // ignore: prefer_initializing_formals
         _random = random ?? Random();
 
   BonusGrid get grid => _grid;

@@ -25,9 +25,14 @@ class BonusTicket {
   String? _unlockedOn;
   String? _playedOn;
 
+  // `this._unlockedOn` / `this._playedOn` の initializing formal は使わない
+  // — そのまま使うと外から渡す名前付き引数がフィールド名の
+  // `_unlockedOn` / `_playedOn` になり、private な内部表現が公開 API に
+  // 漏れる。読み出しは public な getter に限定したいので、ここは
+  // 手動代入のままにする。
   BonusTicket({String? unlockedOn, String? playedOn})
-      : _unlockedOn = unlockedOn,
-        _playedOn = playedOn;
+      : _unlockedOn = unlockedOn, // ignore: prefer_initializing_formals
+        _playedOn = playedOn; // ignore: prefer_initializing_formals
 
   /// 最後に解禁条件を満たした日。
   String? get unlockedOn => _unlockedOn;

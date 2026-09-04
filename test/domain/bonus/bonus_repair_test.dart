@@ -28,6 +28,7 @@ void main() {
       final repair = grid.repairIfStuck(Random(0));
       expect(repair.changedCells, 0);
       expect(repair.grid.cells, grid.cells);
+      expect(repair.usedFullShuffle, isFalse);
     });
 
     test('詰みを検出して修復後は必ず合法手がある', () {
@@ -37,7 +38,41 @@ void main() {
         expect(repair.grid.hasLegalMove, isTrue,
             reason: 'seed=$seed で修復後も詰んでいる');
         expect(repair.changedCells, greaterThan(0));
+        // stuckGrid()(boardMax=3)では、20 万 seed の探索でも手順 2 に
+        // 落ちた例が無かった(下の「手順 2 に落ちる」テストの注記を
+        // 参照)。この 50 seed は手順 1 で解決するはず。
+        expect(repair.usedFullShuffle, isFalse,
+            reason: 'seed=$seed で手順 2(全並べ替え)に落ちた');
       }
+    });
+
+    test('手順 2(全並べ替え)まで落ちると usedFullShuffle が true になる', () {
+      // stuckGrid()(値は 1..3 のみ、boardMax=3)は引き直しの選択肢が
+      // {1, 2} の 2 つしか無く、手順 1 が 25 回とも失敗する経路は
+      // 20 万 seed の探索でも 1 つも見つからなかった(0/200,000)。
+      //
+      // 手順 2 を現実的な頻度で踏ませるには選択肢を増やす必要がある。
+      // 詰みを保ったまま 1 マスだけ、他のどのマスとも値が被らない
+      // 高い数字(9)に差し替えると、boardMax が 9 になり引き直しの
+      // 選択肢が 1..8 の 8 つに増える。この盤面・seed の組み合わせは
+      // 同じ探索(20 万 seed)で見つけた実例(12/200,000 が該当し、
+      // 最初に見つかったのが seed=1991)。
+      final grid = gridOf([
+        [9, 2, 3, 1, 2],
+        [3, 1, 2, 3, 1],
+        [2, 3, 1, 2, 3],
+        [1, 2, 3, 1, 2],
+        [3, 1, 2, 3, 1],
+      ]);
+      expect(grid.hasLegalMove, isFalse);
+
+      final repair = grid.repairIfStuck(Random(1991));
+
+      expect(repair.usedFullShuffle, isTrue);
+      expect(repair.grid.hasLegalMove, isTrue);
+      // 手順 2 は盤面全体の並べ替えなので、手順 1(実測 3.0 マス程度、
+      // 仕様 §3.2)よりずっと多くのマスが変わる。
+      expect(repair.changedCells, greaterThan(15));
     });
 
     test('修復で最大値のマスが動かない(仕様 §2.6)', () {

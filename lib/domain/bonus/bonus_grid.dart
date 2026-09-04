@@ -144,6 +144,7 @@ class BonusGrid {
       mergedCount: count,
       cleared: false,
       repairedCells: repair.changedCells,
+      usedFullShuffle: repair.usedFullShuffle,
     );
   }
 
@@ -160,9 +161,11 @@ class BonusGrid {
   ///
   /// 最後の全並べ替えは必ず成功する。25 マスに対して値は 10 種類以下
   /// なので鳩の巣原理により必ず重複があり、重複がある限りそれらを
-  /// 隣接させる並べ替えが存在する。実測では 300 ゲーム・3,965 回の修復で
-  /// ここへ到達した回数は 0 回だったが、引き直しの終了は確率に依存する
-  /// ため、保証を運に委ねないよう残している。
+  /// 隣接させる並べ替えが存在する。実測では手順 1 がほぼ常に解決するが
+  /// 稀に手順 2 まで落ちる(実測値は仕様 §2.6・§11.5)。引き直しの終了は
+  /// 確率に依存するため、保証を運に委ねないよう手順 2 を残している。
+  /// どちらの手順で解決したかは返り値の [BonusRepair.usedFullShuffle]
+  /// で分かる。
   BonusRepair repairIfStuck(Random random) {
     if (hasLegalMove) return BonusRepair(this, 0);
 
@@ -190,14 +193,18 @@ class BonusGrid {
       }
     }
 
-    // ここへは実測で一度も到達していないが、引き直しの終了は確率に依存
+    // ここへ到達するのは稀だが(仕様 §11.5)、引き直しの終了は確率に依存
     // するので、必ず成功する手段を最後に置く。
     final shuffled = List<int>.of(next);
     for (var attempt = 0; attempt < 1000; attempt++) {
       shuffled.shuffle(random);
       final candidate = BonusGrid._(shuffled);
       if (candidate.hasLegalMove) {
-        return BonusRepair(candidate, _changedCells(cells, shuffled));
+        return BonusRepair(
+          candidate,
+          _changedCells(cells, shuffled),
+          usedFullShuffle: true,
+        );
       }
     }
     throw StateError('盤面の修復に失敗した: $cells');
@@ -242,6 +249,13 @@ class BonusMerge {
   /// 手の結果として返す。
   final int repairedCells;
 
+  /// 修復が起きた場合、それが手順 2(盤面全体の並べ替え)まで落ちたか。
+  ///
+  /// [repairedCells] が 0(修復していない)なら常に false。[BonusGrid.
+  /// repairIfStuck] の [BonusRepair.usedFullShuffle] をそのまま運ぶ
+  /// (仕様 §2.6)。実測では稀にしか true にならない(仕様 §11.5)。
+  final bool usedFullShuffle;
+
   const BonusMerge({
     required this.grid,
     required this.gained,
@@ -249,6 +263,7 @@ class BonusMerge {
     required this.mergedCount,
     required this.cleared,
     this.repairedCells = 0,
+    this.usedFullShuffle = false,
   });
 }
 
@@ -277,7 +292,21 @@ class BonusRepair {
   /// 修復で書き換えたマス数。0 なら詰んでいなかった。
   final int changedCells;
 
-  const BonusRepair(this.grid, this.changedCells);
+  /// 手順 2(盤面全体の並べ替え)まで落ちて解決したか。
+  ///
+  /// false は「詰んでいなかった」と「手順 1(低い値からの引き直し)で
+  /// 解決した」の両方を含む — [changedCells] が 0 かどうかで区別する。
+  /// 手順 1 の終了は確率に依存するため手順 2 を保証として残しており
+  /// (仕様 §2.6)、実際にどちらで解決したかを外から確認できるように
+  /// このフィールドを公開する。実測では稀にしか true にならない
+  /// (仕様 §11.5)。
+  final bool usedFullShuffle;
+
+  const BonusRepair(
+    this.grid,
+    this.changedCells, {
+    this.usedFullShuffle = false,
+  });
 }
 
 int _changedCells(List<int> before, List<int> after) {

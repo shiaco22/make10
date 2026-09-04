@@ -1,17 +1,23 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/bonus_repository.dart';
 import '../data/entitlement_repository.dart';
 import '../data/models/entitlement.dart';
 import '../data/puzzle_repository.dart';
 import '../data/stats_repository.dart';
+import '../domain/bonus/bonus_grid.dart';
+import '../domain/bonus_ticket.dart';
 import '../domain/difficulty.dart';
+import '../game/bonus_session.dart';
 import '../game/game_session.dart';
 import '../game/providers.dart';
 import '../game/time_attack_session.dart';
+import 'bonus_game_screen.dart';
 import 'difficulty_screen.dart';
 import 'game_screen.dart';
 import 'remove_ads_screen.dart';
@@ -194,6 +200,7 @@ class HomeScreen extends ConsumerWidget {
                       ),
                       child: const Text('統計'),
                     ),
+                    _BonusEntry(scale: scale),
                     // Web では google_mobile_ads/in_app_purchase のどちらも
                     // 常に「何もしない」実装 (WebAdGateway/WebBillingGateway)
                     // になり、広告は最初から一切出ない。出ない広告を消す
@@ -287,6 +294,139 @@ class _RemoveAdsEntry extends ConsumerWidget {
                   ),
                 ),
               ),
+      child: Text(label),
+    );
+  }
+}
+
+/// ホーム画面のボーナスゲームの入口。
+///
+/// 4 状態を出し分ける。**未解禁でも隠さず条件を出す** — メカニクスを
+/// 知らせる導線になり、タイムアタックを遊ぶ理由にもなる（仕様 §7.1）。
+///
+/// [BonusRepository] は [ChangeNotifier] なので、タイムアタックのリザルトで
+/// 解禁した瞬間に（ホームへ戻る前でも）このラベルが追従する。読み込み中・
+/// エラー時はまだ状態が分からないので、押せない側にフォールバックする
+/// （既存 [_RemoveAdsEntry] と同じ扱い）。
+///
+/// [ConsumerWidget] ではなく [ConsumerStatefulWidget] にしているのは
+/// [_starting] を保持するため。連打対策の詳細は [_start] のコメント参照。
+class _BonusEntry extends ConsumerStatefulWidget {
+  final double scale;
+
+  const _BonusEntry({required this.scale});
+
+  @override
+  ConsumerState<_BonusEntry> createState() => _BonusEntryState();
+}
+
+class _BonusEntryState extends ConsumerState<_BonusEntry> {
+  /// [_start] が既に実行中かの印。
+  ///
+  /// 新規ゲームの分岐は `await bonus.startGame(...)` を挟む。
+  /// `BonusRepository.startGame` は権利の消費と `inProgressGrid` の設定を
+  /// その await の**前**（同期区間）で済ませてしまうため、ガードが無いと
+  /// 連打した 2 回目のタップは「中断あり」に見えて `resumed != null` の
+  /// 分岐に入ってしまう — 権利が二重消費されるわけではないが、1 回目とは
+  /// 別の [BonusSession] を新たに作って [BonusGameScreen] をもう一つ
+  /// Navigator に積んでしまう（同じ盤面を指す独立したセッションが 2 つ
+  /// 並存し、どちらを操作するかで保存されるスコアが食い違う）。
+  /// [_starting] はこの再入を防ぎ、1 回のタップ操作につき 1 回だけ
+  /// 実行させる。
+  bool _starting = false;
+
+  Future<void> _start(
+    BuildContext context,
+    BonusRepository bonus,
+  ) async {
+    if (_starting) return;
+    setState(() => _starting = true);
+    try {
+      final today = bonusDateKey(DateTime.now());
+      // 中断した盤面があればそれを再開する。無ければ新しく配って権利を
+      // 消費する。権利の消費を開始時に置くのは、完了時だと強制終了で
+      // 無限にリトライできてしまうため（仕様 §4.3）。
+      final resumed = bonus.inProgressGrid;
+      final BonusGrid grid;
+      final int score;
+      if (resumed != null) {
+        grid = resumed;
+        score = bonus.inProgressScore;
+      } else {
+        grid = BonusGrid.deal(Random());
+        score = 0;
+        await bonus.startGame(today, grid);
+      }
+      // ここで消費・保存は既に確定している（startGame は await の前で
+      // 同期的に済ませ、保存まで終えてから戻る）。以降 context が
+      // unmounted で戻っても、権利だけ失われて何も始まらない、という
+      // ことにはならない — 中断あり状態としてホームに残り、次に
+      // 「続きから」で拾える。
+      if (!context.mounted) return;
+
+      final session = BonusSession(
+        repository: bonus,
+        grid: grid,
+        score: score,
+      );
+      final navigator = Navigator.of(context);
+      await navigator.push(
+        MaterialPageRoute<void>(
+          builder: (routeContext) => BonusGameScreen(
+            session: session,
+            onExit: () => Navigator.of(routeContext).pop(),
+          ),
+        ),
+      );
+      session.dispose();
+    } finally {
+      // ゲーム画面を積んでいる間はホーム画面のこのボタン自体が見えない
+      // ので実害は無いが、ポップされてホームに戻ったら次のタップを
+      // 受け付けられるようにする。早期 return した経路でも必ずここを
+      // 通るので、_starting が true のまま固まることはない。
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bonusAsync = ref.watch(bonusRepositoryProvider);
+    return bonusAsync.when(
+      loading: () => const SizedBox(height: 8),
+      error: (_, _) => const SizedBox(height: 8),
+      data: (bonus) => AnimatedBuilder(
+        animation: bonus,
+        builder: (context, _) => _entry(context, bonus),
+      ),
+    );
+  }
+
+  Widget _entry(BuildContext context, BonusRepository bonus) {
+    final today = bonusDateKey(DateTime.now());
+    final String label;
+    final bool enabled;
+    if (bonus.hasInProgress) {
+      // 中断が最優先。権利は消費済みでも続きは遊べる。
+      label = 'ボーナスゲーム（続きから）';
+      enabled = true;
+    } else if (bonus.ticket.isAvailable(today)) {
+      label = '★ ボーナスゲーム';
+      enabled = true;
+    } else if (bonus.ticket.playedOn == today) {
+      label = 'ボーナスゲーム（また明日） ベスト ${bonus.bestScore}';
+      enabled = false;
+    } else {
+      label = 'ボーナスゲーム（タイムアタックで$kBonusUnlockClears問クリア）';
+      enabled = false;
+    }
+
+    return TextButton(
+      style: widget.scale > 1.0
+          ? TextButton.styleFrom(
+              textStyle: TextStyle(fontSize: 14 * widget.scale))
+          : null,
+      onPressed:
+          enabled && !_starting ? () => _start(context, bonus) : null,
       child: Text(label),
     );
   }

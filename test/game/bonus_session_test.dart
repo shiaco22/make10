@@ -27,6 +27,35 @@ BonusGrid fiveTwosGrid() => gridOf([
       [3, 1, 3, 1, 3],
     ]);
 
+/// [nearlyClearedGrid] に (4,2)(4,3) の 3 のペアを加えた盤面。
+///
+/// クリアの合成は (0,0)-(0,1) の外に一切手を触れない(仕様どおり、
+/// クリア時は重力も補充も走らない)ので、このペアはクリア後もそのまま
+/// 残る -- クリア後に「打てるはずの手」を用意して isOver のガードが
+/// 本当に効いているかを確かめるための盤面。ガードが無いと、この手は
+/// 合法手としてそのまま通ってしまう。
+BonusGrid nearlyClearedGridWithSurvivingMove() => gridOf([
+      [9, 9, 1, 2, 1],
+      [2, 1, 2, 1, 2],
+      [1, 2, 1, 2, 1],
+      [2, 1, 2, 1, 2],
+      [1, 2, 3, 3, 1],
+    ]);
+
+/// [nearlyClearedGridWithSurvivingMove] と同じ理由で用意した、詰みが
+/// 起きるように仕込んだ盤面。(0,0)-(0,1) の 3 を合成すると空きは
+/// (0,1) の 1 マスだけになり、そこへの補充が唯一の乱数消費になる。
+/// checkerboard になっている残りのマスには合法手が無いので、補充された
+/// 値が隣接マスと一致するかどうかだけで詰みの有無が決まる
+/// (シード値ごとの実測は [BonusSession] のテストのコメント参照)。
+BonusGrid singleGapGrid() => gridOf([
+      [3, 3, 1, 2, 1],
+      [2, 1, 2, 1, 2],
+      [1, 2, 1, 2, 1],
+      [2, 1, 2, 1, 2],
+      [1, 2, 1, 2, 1],
+    ]);
+
 Future<BonusRepository> loadedRepo() async {
   final repo = BonusRepository();
   await repo.load();
@@ -103,12 +132,42 @@ void main() {
       expect(calls, 0, reason: '盤面が変わっていないのに再描画を促している');
     });
 
-    test('詰みを修復したマス数が読める', () async {
+    test('詰みを修復した手では、修復したマス数がそのまま読める', () async {
       // 詰みは 8 タップに 1 回起きるので、UI が通知を出せるように
       // 直前の手で何マス書き換わったかを公開する。
-      final session = sessionWith(await loadedRepo(), fiveTwosGrid());
-      session.tap(5);
-      expect(session.lastRepairedCells, greaterThanOrEqualTo(0));
+      //
+      // singleGapGrid().tap(0, Random(0)) は実測で必ず詰みが起きる
+      // (checkerboard の唯一の空きマスへの補充が隣接マスと衝突しない
+      // ため)。ここでは同じ盤面・同じシードをドメイン層へ直接渡し、
+      // 「実際に何マス修復したか」を独立に計算してからセッション経由の
+      // 値と突き合わせる。修復アルゴリズム自体の正しさは
+      // bonus_grid_test.dart の役目で、ここで見たいのは BonusSession が
+      // merge.repairedCells を lastRepairedCells へ取り違えずに渡して
+      // いることだけ。
+      const seed = 0;
+      final expected = singleGapGrid().tap(0, Random(seed))!;
+      expect(expected.repairedCells, greaterThan(0),
+          reason: '前提が崩れている: このシードでは詰みが起きるはず');
+
+      final session =
+          sessionWith(await loadedRepo(), singleGapGrid(), seed: seed);
+      session.tap(0);
+      expect(session.lastRepairedCells, expected.repairedCells);
+    });
+
+    test('詰みが起きなかった手では 0 のまま', () async {
+      // singleGapGrid().tap(0, Random(2)) は実測で詰みが起きない
+      // (唯一の空きマスへの補充がたまたま隣接マスと同値になり、それ自体が
+      // 合法手になるため)。上のテストと対になる、修復無しの経路。
+      const seed = 2;
+      final expected = singleGapGrid().tap(0, Random(seed))!;
+      expect(expected.repairedCells, 0,
+          reason: '前提が崩れている: このシードでは詰みが起きないはず');
+
+      final session =
+          sessionWith(await loadedRepo(), singleGapGrid(), seed: seed);
+      session.tap(0);
+      expect(session.lastRepairedCells, 0);
     });
   });
 
@@ -121,11 +180,23 @@ void main() {
     });
 
     test('クリア後のタップは無視される', () async {
-      final session = sessionWith(await loadedRepo(), nearlyClearedGrid());
+      // nearlyClearedGrid() だとクリア後の盤面がちょうど詰んでいて、
+      // 2 回目の tap がどの添字でもドメイン層の不正な手チェックだけで
+      // 弾かれてしまい、isOver のガードを外しても検出できない。
+      // (4,2)-(4,3) の合法手がクリア後も残る盤面を使い、そこを狙って
+      // 打つことで、ガード自体が効いていることを確かめる。
+      final session = sessionWith(
+          await loadedRepo(), nearlyClearedGridWithSurvivingMove());
       session.tap(0);
+      expect(session.isOver, isTrue);
       final scoreAtClear = session.score;
       final cellsAtClear = session.grid.cells.toList();
-      session.tap(5);
+      // クリア後も (4,2)-(4,3) = 添字 22/23 は合法手のまま残っている
+      // (クリアの合成は重力も補充も走らせないため)。isOver のガードが
+      // 無ければここが実際に合成されてしまう。
+      expect(cellsAtClear[22], cellsAtClear[23],
+          reason: '前提が崩れている: 22/23 に合法手が残っているはず');
+      session.tap(22);
       expect(session.score, scoreAtClear);
       expect(session.grid.cells, cellsAtClear);
     });

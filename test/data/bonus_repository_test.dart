@@ -181,10 +181,16 @@ void main() {
       expect(repo.hasInProgress, isFalse);
     });
 
-    test('盤面に int でない要素が混ざっていても load を抜けない', () async {
-      // cast<int>() は遅延評価なので、壊れた要素は load() の try/catch を
-      // すり抜け、後から無関係な場所で TypeError として現れる。
-      // List<int>.from(...) で読み込み時に確定させること。
+    test('盤面に int でない要素が混ざっていれば途中状態を破棄する', () async {
+      // このテストが実際に固定しているのは「壊れた要素があれば途中状態
+      // だけを捨て、bestScore など他のフィールドは残る」という契約だけ。
+      // `_decodeGrid` の `List<int>.from(...)` を `cast<int>()` に変えても
+      // このテストは落ちない — [BonusGrid.of] 内部の `List<int>.of(cells)`
+      // と、このテストのすぐ下にある範囲チェックの `for` ループが、それぞれ
+      // 独立にリストを走査して先に強制評価してしまうため。
+      // `List<int>.from(...)` を選ぶ理由そのものは
+      // `lib/data/bonus_repository.dart` の `_decodeGrid` 側のコメントを
+      // 参照(そちらが最後の防衛線として残っている)。
       SharedPreferences.setMockInitialValues({
         'make10.bonus': jsonEncode({
           'version': 1,

@@ -142,6 +142,16 @@ class BonusRepository extends ChangeNotifier {
 /// なので、int でない要素が混ざっていても [BonusRepository.load] の
 /// try/catch をすり抜け、後から盤面を読んだ無関係な場所で TypeError
 /// として現れる。この不具合はこのプロジェクトで実際に踏んだ。
+///
+/// **この防御は現状 `test/data/bonus_repository_test.dart` 単体では
+/// 検出できない。** ここを `cast<int>()` に変えてもテストは全部通る
+/// ——直後の長さチェックの `List.length` 呼び出し自体は cast を強制
+/// 評価しないが、そのすぐ下の範囲チェックの `for (final v in cells)`
+/// ループと、[BonusGrid.of] 内部の `List<int>.of(cells)` が、それぞれ
+/// 独立に全要素を走査して cast を強制評価してしまうため。つまり今は
+/// 3 箇所が同じ穴を偶然塞いでいる。`List<int>.from(...)` は、その 2 つが
+/// 将来リファクタで無くなっても単独で穴を塞ぎ続ける、最後の防衛線として
+/// 残す。
 BonusGrid _decodeGrid(Object? raw) {
   if (raw is! List) throw const FormatException('grid が配列でない');
   final cells = List<int>.from(raw);

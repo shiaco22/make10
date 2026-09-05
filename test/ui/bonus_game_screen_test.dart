@@ -22,6 +22,20 @@ BonusGrid fiveTwosGrid() => gridOf([
       [3, 1, 3, 1, 3],
     ]);
 
+/// fiveTwosGrid() の左上だけを 10 にした盤面。「最大 10」を画面に
+/// 出すためだけの盤面で、実際のプレイでは辿り着けない値
+/// (10 は達成した瞬間にクリアになり、この画面から結果画面へ切り替わる
+/// ため — lib/domain/bonus/bonus_grid.dart の tap() 参照)。それでも
+/// 320pt 幅のレイアウトは「万一 2 桁の最大値を描いても崩れない」ことを
+/// 保証すべきなので、防御的に最悪値として使う。
+BonusGrid worstCaseDigitsGrid() => gridOf([
+      [10, 3, 1, 3, 1],
+      [2, 2, 2, 3, 1],
+      [3, 2, 2, 1, 3],
+      [1, 3, 1, 3, 1],
+      [3, 1, 3, 1, 3],
+    ]);
+
 /// (0,0)(0,1) が 9 で、1 手でクリアできる盤面。
 BonusGrid nearlyClearedGrid() => gridOf([
       [9, 9, 1, 2, 1],
@@ -189,8 +203,20 @@ void main() {
     });
 
     testWidgets('320pt 幅で溢れない', (tester) async {
-      await pumpGame(tester, await sessionWith(fiveTwosGrid()),
-          size: const Size(320, 480));
+      // 現実的な最悪値で試す: スコアは 4 桁(中央値は ~850、p90 は ~1060
+      // なので普通に起こりうる — tool/simulate_bonus.dart の実測)、
+      // 最大値と入れ替えの残りはどちらも 2 桁(入れ替えはゲーム開始
+      // 直後から kBonusRepairLimit の 10)。
+      //
+      // fiveTwosGrid() + score: 0(既定値)のままでは、スコアが 1 桁に
+      // 収まってしまい溢れが再現しない — この場合ここは「たまたま
+      // 選んだ値では溢れない」ことしか確認しておらず、「320pt 幅で
+      // 溢れない」という主張自体は検査できていなかった。
+      await pumpGame(
+        tester,
+        await sessionWith(worstCaseDigitsGrid(), score: 9999),
+        size: const Size(320, 480),
+      );
       expect(tester.takeException(), isNull);
     });
 

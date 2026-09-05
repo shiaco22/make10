@@ -107,34 +107,47 @@ class _BonusGameScreenState extends State<BonusGameScreen> {
                     children: [
                       Text('スコア ${session.score}',
                           style: theme.textTheme.headlineSmall),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text('最大 ${session.grid.maxValue}',
-                              style: theme.textTheme.bodyMedium),
-                          SizedBox(width: 8 * scale),
-                          // 入れ替えは有限資源になったので常時出す。残りが
-                          // 見えないと「なぜ負けたか」も「あと何回耐えられ
-                          // るか」も分からない(仕様 §3.3)。
-                          //
-                          // titleMedium ではなく bodyMedium にしてあるのは、
-                          // 320pt 幅でこの行が 3 項目(スコア・最大・入れ替え)
-                          // になったことで、titleMedium のままだと実測で
-                          // RenderFlex が右へ 14px 溢れたため
-                          // (test/ui/bonus_game_screen_test.dart の
-                          // '320pt 幅で溢れない' が実際に検出した)。
-                          Text(
-                            '入れ替え ${session.repairsLeft}',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: session.repairsLeft <= 3
-                                  ? theme.colorScheme.error
-                                  : null,
-                              fontWeight: session.repairsLeft <= 3
-                                  ? FontWeight.bold
-                                  : null,
-                            ),
+                      // 最大値・残り入れ替えの 2 項目は Flexible + FittedBox
+                      // で包み、収まりきらないときだけ丸ごと縮小する。
+                      //
+                      // スコアは 4 桁(中央値 ~850、p90 ~1060 で普通に
+                      // 起こる — tool/simulate_bonus.dart の実測)、残り
+                      // 入れ替えはゲーム開始直後から 2 桁
+                      // (kBonusRepairLimit == 10)になる。この 2 つが重なる
+                      // 320pt 幅の最悪値では、bodyMedium に縮めただけでは
+                      // 足りず RenderFlex が右へ溢れる
+                      // (test/ui/bonus_game_screen_test.dart の
+                      // '320pt 幅で溢れない' が実測で検出、固定フォント
+                      // サイズの調整はどこかの文字数で必ずまた破綻する)。
+                      // 残り回数は「見えない」ことが許されない資源表示
+                      // なので(仕様 §3.3)、はみ出す代わりに縮小して必ず
+                      // 収める。スコア側は縮小せずヘッドラインのまま残す
+                      // — 盤面より上の行の高さはスコアの行高で決まるので、
+                      // 盤面(Expanded)の取り分は変わらない。
+                      Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('最大 ${session.grid.maxValue}',
+                                  style: theme.textTheme.bodyMedium),
+                              SizedBox(width: 8 * scale),
+                              Text(
+                                '入れ替え ${session.repairsLeft}',
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  color: session.repairsLeft <= 3
+                                      ? theme.colorScheme.error
+                                      : null,
+                                  fontWeight: session.repairsLeft <= 3
+                                      ? FontWeight.bold
+                                      : null,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),

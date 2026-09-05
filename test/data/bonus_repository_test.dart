@@ -118,8 +118,8 @@ void main() {
     test('何も保存されていなければ既定値', () async {
       final repo = await loaded();
       expect(repo.bestScore, 0);
-      expect(repo.ticket.unlockedOn, isNull);
-      expect(repo.ticket.playedOn, isNull);
+      expect(repo.ticket.day, isNull);
+      expect(repo.ticket.played, 0);
       expect(repo.hasInProgress, isFalse);
       expect(repo.inProgressGrid, isNull);
       expect(repo.inProgressScore, 0);
@@ -234,8 +234,8 @@ void main() {
       // レコード全体を既定値に戻す -- unlockedOn 側の不一致を個別に
       // 見るまでもなく、ticket もまとめて初期化されることまで確認する。
       expect(repo.bestScore, 0);
-      expect(repo.ticket.unlockedOn, isNull);
-      expect(repo.ticket.playedOn, isNull);
+      expect(repo.ticket.day, isNull);
+      expect(repo.ticket.played, 0);
       expect(repo.hasInProgress, isFalse);
     });
 
@@ -253,7 +253,7 @@ void main() {
           reason: '長さの合わない盤面が復元されている');
       // 途中状態だけを捨て、他のフィールドは活かす。
       expect(repo.bestScore, 500);
-      expect(repo.ticket.playedOn, '2026-09-03');
+      expect(repo.ticket.day, '2026-09-03');
     });
 
     test('盤面に範囲外の値が含まれれば途中状態を破棄する', () async {

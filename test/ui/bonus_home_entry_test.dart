@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 String today() => bonusDateKey(DateTime.now());
 String yesterday() =>
     bonusDateKey(DateTime.now().subtract(const Duration(days: 1)));
+const String kLeftOneLabel = '★ ボーナスゲーム（あと 1 回）';
 
 /// 25 マスの合法な盤面（1 が隣接している）。
 List<int> playableCells() => [
@@ -25,19 +26,25 @@ List<int> playableCells() => [
 
 void setBonusPrefs({
   int bestScore = 0,
-  String? unlockedOn,
-  String? playedOn,
+  String? day,
+  int earned = 0,
+  int played = 0,
   bool inProgress = false,
   int inProgressScore = 0,
 }) {
   SharedPreferences.setMockInitialValues({
     'make10.bonus': jsonEncode({
-      'version': 1,
+      'version': 2,
       'bestScore': bestScore,
-      'unlockedOn': unlockedOn,
-      'playedOn': playedOn,
+      'day': day,
+      'earned': earned,
+      'played': played,
       if (inProgress)
-        'inProgress': {'grid': playableCells(), 'score': inProgressScore},
+        'inProgress': {
+          'grid': playableCells(),
+          'score': inProgressScore,
+          'repairsUsed': 0,
+        },
     }),
   });
 }
@@ -84,12 +91,12 @@ void main() {
     });
 
     testWidgets('解禁済みでは押せる', (tester) async {
-      setBonusPrefs(unlockedOn: today());
+      setBonusPrefs(day: today(), earned: 1);
       await pumpHome(tester);
-      expect(find.text('★ ボーナスゲーム'), findsOneWidget);
+      expect(find.text(kLeftOneLabel), findsOneWidget);
       final button = tester.widget<TextButton>(
         find.ancestor(
-          of: find.text('★ ボーナスゲーム'),
+          of: find.text(kLeftOneLabel),
           matching: find.byType(TextButton),
         ),
       );
@@ -97,7 +104,12 @@ void main() {
     });
 
     testWidgets('本日終了ではベストを出し、押せない', (tester) async {
-      setBonusPrefs(bestScore: 994, unlockedOn: today(), playedOn: today());
+      setBonusPrefs(
+        bestScore: 994,
+        day: today(),
+        earned: kBonusPlaysPerDay,
+        played: kBonusPlaysPerDay,
+      );
       await pumpHome(tester);
       expect(find.text('ボーナスゲーム（また明日） ベスト 994'), findsOneWidget);
       final button = tester.widget<TextButton>(
@@ -110,11 +122,12 @@ void main() {
     });
 
     testWidgets('中断があれば続きから遊べる', (tester) async {
-      // 権利は開始時に消費済みなので playedOn は今日。それでも未完了の
-      // 盤面があれば再開できる（仕様 §4.3）。
+      // 権利は開始時に消費済みなので played は今日の分だけ増えている。
+      // それでも未完了の盤面があれば再開できる（仕様 §4.3）。
       setBonusPrefs(
-        unlockedOn: today(),
-        playedOn: today(),
+        day: today(),
+        earned: 1,
+        played: 1,
         inProgress: true,
         inProgressScore: 340,
       );
@@ -130,32 +143,34 @@ void main() {
     });
 
     testWidgets('前日に解禁して遊ばなかった権利は消えている', (tester) async {
-      setBonusPrefs(unlockedOn: yesterday());
+      setBonusPrefs(day: yesterday(), earned: 1);
       await pumpHome(tester);
       expect(find.textContaining('タイムアタックで'), findsOneWidget);
-      expect(find.text('★ ボーナスゲーム'), findsNothing);
+      // ★ は「遊べる」状態にしか出ない印。前日分の獲得が今日に持ち越されて
+      // いれば、ここが見えてしまう。
+      expect(find.textContaining('★'), findsNothing);
     });
 
     testWidgets('前日に遊んでいても今日の未解禁表示になる', (tester) async {
-      setBonusPrefs(
-          bestScore: 500, unlockedOn: yesterday(), playedOn: yesterday());
+      setBonusPrefs(bestScore: 500, day: yesterday(), earned: 1, played: 1);
       await pumpHome(tester);
       expect(find.textContaining('タイムアタックで'), findsOneWidget);
       expect(find.textContaining('また明日'), findsNothing);
     });
 
     testWidgets('解禁済みから押すとゲーム画面へ進む', (tester) async {
-      setBonusPrefs(unlockedOn: today());
+      setBonusPrefs(day: today(), earned: 1);
       await pumpHome(tester);
-      await tester.tap(find.text('★ ボーナスゲーム'));
+      await tester.tap(find.text(kLeftOneLabel));
       await tester.pumpAndSettle();
       expect(find.byType(BonusGridView), findsOneWidget);
     });
 
     testWidgets('中断から押すとスコアを引き継いで再開する', (tester) async {
       setBonusPrefs(
-        unlockedOn: today(),
-        playedOn: today(),
+        day: today(),
+        earned: 1,
+        played: 1,
         inProgress: true,
         inProgressScore: 340,
       );
@@ -186,11 +201,11 @@ void main() {
       // (TestAsyncUtils が「await し忘れ」として弾く) ため、
       // ウィジェットから直接取り出した onPressed を、間に await を挟まず
       // 同期的に 2 回呼んで、まさにこの競合状態を再現する。
-      setBonusPrefs(unlockedOn: today());
+      setBonusPrefs(day: today(), earned: 1);
       await pumpHome(tester);
       final button = tester.widget<TextButton>(
         find.ancestor(
-          of: find.text('★ ボーナスゲーム'),
+          of: find.text(kLeftOneLabel),
           matching: find.byType(TextButton),
         ),
       );

@@ -62,10 +62,7 @@ class BonusRepository extends ChangeNotifier {
       try {
         final data = jsonDecode(raw) as Map<String, dynamic>;
         bestScore = data['bestScore'] as int? ?? 0;
-        ticket = BonusTicket(
-          unlockedOn: data['unlockedOn'] as String?,
-          playedOn: data['playedOn'] as String?,
-        );
+        ticket = _decodeTicket(data);
         final inProgress = data['inProgress'];
         if (inProgress is Map<String, dynamic>) {
           // 途中状態だけが壊れている場合に、ベストスコアや権利まで
@@ -170,10 +167,11 @@ class BonusRepository extends ChangeNotifier {
     await prefs.setString(
       _prefsKey,
       jsonEncode({
-        'version': 1,
+        'version': 2,
         'bestScore': _bestScore,
-        'unlockedOn': _ticket.unlockedOn,
-        'playedOn': _ticket.playedOn,
+        'day': _ticket.day,
+        'earned': _ticket.earned,
+        'played': _ticket.played,
         if (grid != null)
           'inProgress': {
             'grid': grid.cells,
@@ -214,4 +212,42 @@ BonusGrid _decodeGrid(Object? raw) {
     }
   }
   return BonusGrid.of(cells);
+}
+
+/// 保存された JSON から権利を復元する。
+///
+/// **version 1（日付 2 つ）の保存データが実際に端末に存在する。** web 版は
+/// 公開済みで、遊んだ人のデータがある。捨てるとその日の権利が消えるので、
+/// 読み込み時に新しい形へ移す（仕様 §3）。
+///
+/// `day` があれば新形式として読み、旧キーは見ない。新旧のビルドを行き来
+/// した端末で、古い値に引きずられないようにするため。
+BonusTicket _decodeTicket(Map<String, dynamic> data) {
+  final day = data['day'];
+  if (day is String) {
+    final earned = data['earned'];
+    final played = data['played'];
+    return BonusTicket(
+      day: day,
+      earned: earned is int ? earned : 0,
+      played: played is int ? played : 0,
+    );
+  }
+
+  // ここから下は version 1 からの移行。
+  final unlockedOn = data['unlockedOn'];
+  final playedOn = data['playedOn'];
+  final unlocked = unlockedOn is String ? unlockedOn : null;
+  final played = playedOn is String ? playedOn : null;
+
+  if (unlocked == null && played == null) return BonusTicket();
+  if (played == null) {
+    // 今日獲得してまだ遊んでいない人。1 回分を残す。
+    return BonusTicket(day: unlocked, earned: 1, played: 0);
+  }
+  if (unlocked == null || played.compareTo(unlocked) >= 0) {
+    // 遊んだ日が同じか新しい。遊んだのなら獲得もしていたはず。
+    return BonusTicket(day: played, earned: 1, played: 1);
+  }
+  return BonusTicket(day: unlocked, earned: 1, played: 0);
 }

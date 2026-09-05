@@ -408,19 +408,25 @@ class _BonusEntryState extends ConsumerState<_BonusEntry> {
 
   Widget _entry(BuildContext context, BonusRepository bonus) {
     final today = bonusDateKey(DateTime.now());
+    final ticket = bonus.ticket;
+    final left = ticket.playsLeft(today);
     final String label;
     final bool enabled;
     if (bonus.hasInProgress) {
-      // 中断が最優先。権利は消費済みでも続きは遊べる。
+      // 中断が最優先。その 1 回は消費済みなので、再開せずに別の回を
+      // 始められると回数が合わなくなる（仕様 §4）。
       label = 'ボーナスゲーム（続きから）';
       enabled = true;
-    } else if (bonus.ticket.isAvailable(today)) {
-      label = '★ ボーナスゲーム';
+    } else if (left > 0) {
+      label = '★ ボーナスゲーム（あと $left 回）';
       enabled = true;
-    } else if (bonus.ticket.playedOn == today) {
+    } else if (ticket.day == today && ticket.earned >= kBonusPlaysPerDay) {
       label = 'ボーナスゲーム（また明日） ベスト ${bonus.bestScore}';
       enabled = false;
     } else {
+      // 「まだ 1 回も獲得していない」と「獲得した分を使い切ったが今日の
+      // 上限には届いていない」は、どちらも次にやることが「タイムアタックを
+      // 勝つ」で同じ。区別しても情報が増えないので同じ文言にする（仕様 §4）。
       label = 'ボーナスゲーム（タイムアタックで$kBonusUnlockClears問クリア）';
       enabled = false;
     }
@@ -430,8 +436,7 @@ class _BonusEntryState extends ConsumerState<_BonusEntry> {
           ? TextButton.styleFrom(
               textStyle: TextStyle(fontSize: 14 * widget.scale))
           : null,
-      onPressed:
-          enabled && !_starting ? () => _start(context, bonus) : null,
+      onPressed: enabled && !_starting ? () => _start(context, bonus) : null,
       child: Text(label),
     );
   }

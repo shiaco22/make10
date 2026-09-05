@@ -363,10 +363,16 @@ class _BonusEntryState extends ConsumerState<_BonusEntry> {
       // 「続きから」で拾える。
       if (!context.mounted) return;
 
+      // bonus.inProgressRepairsUsed はここで読む(startGame の後)。
+      // startGame は同期区間で _inProgressRepairsUsed を 0 にしてから
+      // 保存まで終えているので、新規開始なら 0、再開なら永続化されていた
+      // 値がそのまま読める。順序を逆にすると新規開始でも前回のゲームの
+      // 値が残ってしまう(仕様 §3.4)。
       final session = BonusSession(
         repository: bonus,
         grid: grid,
         score: score,
+        repairsUsed: bonus.inProgressRepairsUsed,
       );
       final navigator = Navigator.of(context);
       await navigator.push(

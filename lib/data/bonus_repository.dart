@@ -22,6 +22,7 @@ class BonusRepository extends ChangeNotifier {
   BonusTicket _ticket = BonusTicket();
   BonusGrid? _inProgressGrid;
   int _inProgressScore = 0;
+  int _inProgressRepairsUsed = 0;
 
   /// 直前の [_save] 呼び出しを表す。次の [_save] はこれへ鎖状につなぐ。
   ///
@@ -41,6 +42,13 @@ class BonusRepository extends ChangeNotifier {
   int get inProgressScore => _inProgressScore;
   bool get hasInProgress => _inProgressGrid != null;
 
+  /// 中断した局面までに盤面を入れ替えた回数。
+  ///
+  /// **保存しないと、中断・再開のたびに入れ替えが上限まで戻る。**
+  /// 上限([kBonusRepairLimit])が事実上無くなり、ゲームオーバーが
+  /// 起こらなくなるので、これは仕様の穴ではなく抜け道になる(仕様 §3.4)。
+  int get inProgressRepairsUsed => _inProgressRepairsUsed;
+
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_prefsKey);
@@ -48,6 +56,7 @@ class BonusRepository extends ChangeNotifier {
     var ticket = BonusTicket();
     BonusGrid? grid;
     var score = 0;
+    var repairsUsed = 0;
 
     if (raw != null) {
       try {
@@ -64,9 +73,16 @@ class BonusRepository extends ChangeNotifier {
           try {
             grid = _decodeGrid(inProgress['grid']);
             score = inProgress['score'] as int? ?? 0;
+            // 上限を入れる前の保存データには repairsUsed が無い。捨てて
+            // ゲームを失わせるより、0(上限が緩む側)に倒す(仕様 §7)。
+            final rawRepairsUsed = inProgress['repairsUsed'];
+            repairsUsed = rawRepairsUsed is int
+                ? rawRepairsUsed.clamp(0, kBonusRepairLimit)
+                : 0;
           } catch (_) {
             grid = null;
             score = 0;
+            repairsUsed = 0;
           }
         }
       } catch (_) {
@@ -76,6 +92,7 @@ class BonusRepository extends ChangeNotifier {
         ticket = BonusTicket();
         grid = null;
         score = 0;
+        repairsUsed = 0;
       }
     }
 
@@ -83,6 +100,7 @@ class BonusRepository extends ChangeNotifier {
     _ticket = ticket;
     _inProgressGrid = grid;
     _inProgressScore = score;
+    _inProgressRepairsUsed = repairsUsed;
     notifyListeners();
   }
 
@@ -105,13 +123,15 @@ class BonusRepository extends ChangeNotifier {
     _ticket.consume(today);
     _inProgressGrid = grid;
     _inProgressScore = 0;
+    _inProgressRepairsUsed = 0;
     await _save();
     notifyListeners();
   }
 
-  Future<void> saveProgress(BonusGrid grid, int score) async {
+  Future<void> saveProgress(BonusGrid grid, int score, int repairsUsed) async {
     _inProgressGrid = grid;
     _inProgressScore = score;
+    _inProgressRepairsUsed = repairsUsed.clamp(0, kBonusRepairLimit);
     await _save();
     notifyListeners();
   }
@@ -122,6 +142,7 @@ class BonusRepository extends ChangeNotifier {
     if (improved) _bestScore = score;
     _inProgressGrid = null;
     _inProgressScore = 0;
+    _inProgressRepairsUsed = 0;
     await _save();
     notifyListeners();
     return improved;
@@ -157,6 +178,7 @@ class BonusRepository extends ChangeNotifier {
           'inProgress': {
             'grid': grid.cells,
             'score': _inProgressScore,
+            'repairsUsed': _inProgressRepairsUsed,
           },
       }),
     );

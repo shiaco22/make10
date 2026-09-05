@@ -159,7 +159,7 @@ void main() {
         [1, 2, 3, 1, 2],
         [3, 1, 2, 3, 1],
       ]);
-      await repo.saveProgress(advanced, 340);
+      await repo.saveProgress(advanced, 340, 0);
 
       final reloaded = await loaded();
       expect(reloaded.inProgressGrid!.cells, advanced.cells);
@@ -308,8 +308,8 @@ void main() {
       // 「直列化してもこの結果を壊していない」ことを固定するためのもので、
       // 直列化そのものが効くかどうかは下のテストで見る。
       final repo = await loaded();
-      final first = repo.saveProgress(sampleGrid(), 10);
-      final second = repo.saveProgress(advancedGrid(), 20);
+      final first = repo.saveProgress(sampleGrid(), 10, 0);
+      final second = repo.saveProgress(advancedGrid(), 20, 0);
       await first;
       await second;
 
@@ -335,12 +335,12 @@ void main() {
       await repo.load();
 
       // 1 件目(古いデータ)。setValue が発行されるまで待つ。
-      final first = repo.saveProgress(sampleGrid(), 10);
+      final first = repo.saveProgress(sampleGrid(), 10, 0);
       await _pumpUntil(() => store.pendingCount >= 1);
       expect(store.pendingCount, 1);
 
       // 2 件目(新しいデータ)を、1 件目を確定させる前に呼ぶ。
-      final second = repo.saveProgress(advancedGrid(), 20);
+      final second = repo.saveProgress(advancedGrid(), 20, 0);
       await _pump(10);
       expect(store.pendingCount, 1,
           reason: '直列化されておらず、1 件目の確定前に 2 件目が発行された');
@@ -377,11 +377,11 @@ void main() {
 
       // 1 回目は失敗する。BonusSession.tap の .ignore() と同じ扱いで
       // ここでも例外は握りつぶす — 失敗そのものはこのテストの対象外。
-      await repo.saveProgress(sampleGrid(), 10).catchError((_) => null);
+      await repo.saveProgress(sampleGrid(), 10, 0).catchError((_) => null);
 
       // 2 回目は成功するはず。直前の失敗が鎖に残っていれば、これも
       // 巻き添えで失敗する。
-      await repo.saveProgress(advancedGrid(), 20);
+      await repo.saveProgress(advancedGrid(), 20, 0);
 
       SharedPreferences.resetStatic();
       final reloaded = BonusRepository();

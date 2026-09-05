@@ -119,9 +119,7 @@ class BonusSession extends ChangeNotifier {
     } else {
       // 1 手ごとに保存する。所要 5 分前後のゲームで、電話や
       // バックグラウンド化による中断は普通に起きる(仕様 §4.3)。
-      // Task 4 で第 3 引数(_repairsUsed)を足す。それまではこの
-      // ゲームの入れ替え使用回数が保存に載らない。
-      repository.saveProgress(_grid, _score).ignore();
+      repository.saveProgress(_grid, _score, _repairsUsed).ignore();
     }
     notifyListeners();
   }

@@ -22,6 +22,20 @@ BonusGrid fiveTwosGrid() => gridOf([
       [3, 1, 3, 1, 3],
     ]);
 
+/// fiveTwosGrid() の左上だけを 10 にした盤面。「最大 10」を画面に
+/// 出すためだけの盤面で、実際のプレイでは辿り着けない値
+/// (10 は達成した瞬間にクリアになり、この画面から結果画面へ切り替わる
+/// ため — lib/domain/bonus/bonus_grid.dart の tap() 参照)。それでも
+/// 320pt 幅のレイアウトは「万一 2 桁の最大値を描いても崩れない」ことを
+/// 保証すべきなので、防御的に最悪値として使う。
+BonusGrid worstCaseDigitsGrid() => gridOf([
+      [10, 3, 1, 3, 1],
+      [2, 2, 2, 3, 1],
+      [3, 2, 2, 1, 3],
+      [1, 3, 1, 3, 1],
+      [3, 1, 3, 1, 3],
+    ]);
+
 /// (0,0)(0,1) が 9 で、1 手でクリアできる盤面。
 BonusGrid nearlyClearedGrid() => gridOf([
       [9, 9, 1, 2, 1],
@@ -146,11 +160,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(session.isOver, isTrue);
       expect(find.byType(BonusResultScreen), findsOneWidget);
-      // 途中でやめた場合は cleared: false が結果画面に伝わっているはず --
-      // これを見ずに BonusResultScreen が出たことだけを確認すると、
-      // BonusGameScreen 側の `cleared: session.isCleared` の配線を
-      // `cleared: true` に固定する変異が入っても素通りしてしまう
-      // (確かめ済み: この配線を壊しても他のテストは全部通ったままだった)。
+      // 途中でやめた場合は outcome: BonusOutcome.gaveUp が結果画面に
+      // 伝わっているはず -- これを見ずに BonusResultScreen が出たことだけを
+      // 確認すると、BonusGameScreen 側の `outcome: session.outcome!` の
+      // 配線を `outcome: BonusOutcome.cleared` に固定する変異が入っても
+      // 素通りしてしまう(確かめ済み: この配線を壊しても他のテストは
+      // 全部通ったままだった)。
       expect(find.text('ここまで'), findsOneWidget);
       expect(find.text('10 を作った!'), findsNothing);
     });
@@ -172,6 +187,11 @@ void main() {
       // 自体も確かめたうえで、通知の表示を無条件にアサートする --
       // 「修復が起きたときだけ確認する」if ガードは、修復が起きなくても
       // 静かに素通りしてしまう。
+      //
+      // 'マス入れ替えました' まで絞るのは、残り回数の常時表示
+      // (`入れ替え N`)も 'textContaining入れ替え' に引っかかるようになった
+      // ため -- 単なる '入れ替え' では 2 件ヒットして findsOneWidget が
+      // 壊れる(仕様 §3.3 で残り回数を常時表示にした結果の衝突)。
       final session = await sessionWith(singleGapGrid());
       await pumpGame(tester, session);
       await tester.tap(find.byKey(const ValueKey('bonus-cell-0')));
@@ -179,12 +199,24 @@ void main() {
       expect(session.lastRepairedCells, greaterThan(0),
           reason: '前提が崩れている: このシードでは詰みが起きるはず'
               '(test/game/bonus_session_test.dart 参照)');
-      expect(find.textContaining('入れ替え'), findsOneWidget);
+      expect(find.textContaining('マス入れ替えました'), findsOneWidget);
     });
 
     testWidgets('320pt 幅で溢れない', (tester) async {
-      await pumpGame(tester, await sessionWith(fiveTwosGrid()),
-          size: const Size(320, 480));
+      // 現実的な最悪値で試す: スコアは 4 桁(中央値は ~850、p90 は ~1060
+      // なので普通に起こりうる — tool/simulate_bonus.dart の実測)、
+      // 最大値と入れ替えの残りはどちらも 2 桁(入れ替えはゲーム開始
+      // 直後から kBonusRepairLimit の 10)。
+      //
+      // fiveTwosGrid() + score: 0(既定値)のままでは、スコアが 1 桁に
+      // 収まってしまい溢れが再現しない — この場合ここは「たまたま
+      // 選んだ値では溢れない」ことしか確認しておらず、「320pt 幅で
+      // 溢れない」という主張自体は検査できていなかった。
+      await pumpGame(
+        tester,
+        await sessionWith(worstCaseDigitsGrid(), score: 9999),
+        size: const Size(320, 480),
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -217,7 +249,7 @@ void main() {
             bestScore: bestScore,
             bestUpdated: bestUpdated,
             isSaving: isSaving,
-            cleared: cleared,
+            outcome: cleared ? BonusOutcome.cleared : BonusOutcome.gaveUp,
             onHome: () {},
           ),
         ),

@@ -22,6 +22,14 @@ class BonusSimRun {
   final int taps;
   final int score;
   final bool won;
+
+  /// 上限を使い切ったあとに詰んでゲームオーバーになったか。
+  ///
+  /// `won` と同時に true にはならない(`BonusGrid.tap` の `isStuck` は
+  /// クリアと排他 — 仕様 §2.4)。どちらも false のまま返るのは、
+  /// `_play` の安全弁 `cap`(既定 20000 タップ)に達した場合だけで、
+  /// 上限付きのエンジンでは実質起こらないはず。
+  final bool gameOver;
   final int repairs;
   final int cellsChanged;
   final int topMoved;
@@ -36,6 +44,7 @@ class BonusSimRun {
     required this.taps,
     required this.score,
     required this.won,
+    required this.gameOver,
     required this.repairs,
     required this.cellsChanged,
     required this.topMoved,
@@ -47,9 +56,27 @@ class BonusSimRun {
 class BonusSimResult {
   final int runs;
   final int wins;
+
+  /// 上限を使い切って詰んだ(ゲームオーバーになった)試行数。
+  ///
+  /// `wins + gameOvers == runs` になるはず — 上限付きのエンジンでは
+  /// 1 ゲームは必ずクリアかゲームオーバーのどちらかで終わる(仕様 §3.1)。
+  final int gameOvers;
   final int tapsP10;
+
+  /// 10 に到達した試行だけで見たタップ数の中央値(仕様 §6「到達時タップ中央」)。
   final double tapsMedian;
   final int tapsP90;
+
+  /// ゲームオーバーになった試行だけで見たタップ数の中央値
+  /// (仕様 §6「GO 時タップ中央」)。該当する試行が 0 件なら 0。
+  final double goTapsMedian;
+
+  /// 全試行(クリア・ゲームオーバーの両方を含む)で見たスコアの中央値
+  /// (仕様 §6「全体スコア中央」)。上限が無かった元仕様 §3.1 の時代は
+  /// 全試行がクリアだったので勝者限定の中央値と一致していたが、上限を
+  /// 入れた now では「クリアした試行だけ」ではなく「全試行」で見ないと
+  /// 仕様 §6 の数値と一致しない。
   final double scoreMedian;
   final double repairsPerRun;
   final double cellsChangedPerRepair;
@@ -59,9 +86,11 @@ class BonusSimResult {
   const BonusSimResult({
     required this.runs,
     required this.wins,
+    required this.gameOvers,
     required this.tapsP10,
     required this.tapsMedian,
     required this.tapsP90,
+    required this.goTapsMedian,
     required this.scoreMedian,
     required this.repairsPerRun,
     required this.cellsChangedPerRepair,
@@ -147,11 +176,18 @@ BonusSimRun _play(Random random, String policy, {int cap = 20000}) {
     final tappedValue = grid.cells[index];
     final topCountBefore = grid.cells.where((v) => v == topBefore).length;
 
-    final merge = grid.tap(index, random)!;
+    // セッション(BonusSession.tap)と同じ規則: 残り(上限 - 使用済み)が
+    // 無くなったら修復を断る(仕様 §2.4)。断った結果詰んでいれば
+    // `merge.isStuck` が true になり、その手でゲームオーバーが確定する。
+    final merge =
+        grid.tap(index, random, repairIfStuck: repairs < kBonusRepairLimit)!;
     score += merge.gained;
     taps++;
 
     if (merge.repairedCells > 0) {
+      // isStuck の手は修復していない(修復を断った結果なので)。ここで
+      // 数えれば「修復が起きた回数」だけを数えることになり、
+      // isStuck とは排他になる。
       repairs++;
       cellsChanged += merge.repairedCells;
       if (merge.usedFullShuffle) fallbacks++;
@@ -171,6 +207,22 @@ BonusSimRun _play(Random random, String policy, {int cap = 20000}) {
         taps: taps,
         score: score,
         won: true,
+        gameOver: false,
+        repairs: repairs,
+        cellsChanged: cellsChanged,
+        topMoved: topMoved,
+        fallbacks: fallbacks,
+      );
+    }
+
+    if (merge.isStuck) {
+      // 打った手自体のスコアは加算済み(仕様 §3.1: 「打った手のスコアは
+      // 加算する」)。ここで終える。
+      return BonusSimRun(
+        taps: taps,
+        score: score,
+        won: false,
+        gameOver: true,
         repairs: repairs,
         cellsChanged: cellsChanged,
         topMoved: topMoved,
@@ -184,6 +236,7 @@ BonusSimRun _play(Random random, String policy, {int cap = 20000}) {
     taps: taps,
     score: score,
     won: false,
+    gameOver: false,
     repairs: repairs,
     cellsChanged: cellsChanged,
     topMoved: topMoved,
@@ -212,17 +265,24 @@ BonusSimResult simulate({
   final random = Random(seed);
   final results = [for (var i = 0; i < runs; i++) _play(random, policy)];
   final wins = results.where((r) => r.won).toList();
+  final gameOvers = results.where((r) => r.gameOver).toList();
   final taps = [for (final r in wins) r.taps]..sort();
-  final scores = [for (final r in wins) r.score]..sort();
+  final goTaps = [for (final r in gameOvers) r.taps]..sort();
+  // 全試行(クリア・ゲームオーバーの両方)のスコア。仕様 §6「全体スコア
+  // 中央」は上限を入れたことで「クリアした試行だけ」とは一致しなくなった
+  // (このファイル冒頭の BonusSimResult.scoreMedian のコメント参照)。
+  final scores = [for (final r in results) r.score]..sort();
   final totalRepairs = results.fold(0, (a, r) => a + r.repairs);
   final totalChanged = results.fold(0, (a, r) => a + r.cellsChanged);
 
   return BonusSimResult(
     runs: runs,
     wins: wins.length,
+    gameOvers: gameOvers.length,
     tapsP10: _percentile(taps, 0.10),
     tapsMedian: _median(taps),
     tapsP90: _percentile(taps, 0.90),
+    goTapsMedian: _median(goTaps),
     scoreMedian: _median(scores),
     repairsPerRun: totalRepairs / runs,
     cellsChangedPerRepair:
@@ -236,17 +296,18 @@ void main(List<String> args) {
   final runs = args.isNotEmpty ? int.parse(args[0]) : 300;
   final seed = args.length > 1 ? int.parse(args[1]) : 20260903;
 
-  print('runs=$runs seed=$seed  (仕様 §3.1 との突き合わせ)');
+  print('runs=$runs seed=$seed  '
+      '(仕様 §6 との突き合わせ、入れ替え上限 $kBonusRepairLimit 回)');
   print('');
-  print('policy   wins    p10  median    p90   score med');
+  print('policy   10到達率  到達時中央  GO時中央  全体スコア中央');
   for (final policy in ['score', 'climb', 'group']) {
     final r = simulate(runs: runs, seed: seed, policy: policy);
+    final winRate = r.wins / r.runs * 100;
     print('${policy.padRight(8)}'
-        '${'${r.wins}/${r.runs}'.padLeft(6)}'
-        '${r.tapsP10.toString().padLeft(7)}'
-        '${r.tapsMedian.toStringAsFixed(0).padLeft(8)}'
-        '${r.tapsP90.toString().padLeft(7)}'
-        '${r.scoreMedian.toStringAsFixed(0).padLeft(12)}');
+        '${'${winRate.toStringAsFixed(1)}%'.padLeft(8)}'
+        '${r.tapsMedian.toStringAsFixed(0).padLeft(12)}'
+        '${r.goTapsMedian.toStringAsFixed(0).padLeft(10)}'
+        '${r.scoreMedian.toStringAsFixed(0).padLeft(16)}');
   }
 
   print('');
@@ -258,9 +319,15 @@ void main(List<String> args) {
   print('  最大値のマスが消えた  : ${scoreRun.repairsTopMoved} 回');
   print('  全並べ替えへの落下    : ${scoreRun.fallbacks} 回');
 
-  if (scoreRun.wins != scoreRun.runs) {
-    stderr.writeln('10 に到達しない試行があった: '
-        '${scoreRun.runs - scoreRun.wins} / ${scoreRun.runs}');
+  // 上限付きのエンジンでは「必ず 10 に到達する」はもう成り立たない
+  // (仕様 §6)。その代わり、1 ゲームは必ずクリアかゲームオーバーの
+  // どちらかで終わるはず — `_play` の安全弁 `cap`(既定 20000 タップ)に
+  // 達した試行が 1 つでもあれば実エンジンの不変条件が壊れている。
+  if (scoreRun.wins + scoreRun.gameOvers != scoreRun.runs) {
+    stderr.writeln('勝ちでもゲームオーバーでもない試行があった'
+        '(ループの安全弁 cap に達した可能性): '
+        '${scoreRun.runs - scoreRun.wins - scoreRun.gameOvers} '
+        '/ ${scoreRun.runs}');
     exit(1);
   }
 }

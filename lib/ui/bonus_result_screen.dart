@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../game/bonus_session.dart' show BonusOutcome;
+
 /// ボーナスゲームの結果。
 ///
 /// [isSaving] の扱いは既存 [ResultScreen] と同じ。クリアした瞬間は
@@ -12,8 +14,8 @@ class BonusResultScreen extends StatelessWidget {
   final bool bestUpdated;
   final bool isSaving;
 
-  /// 10 を作って終わったか。途中でやめた場合は false。
-  final bool cleared;
+  /// このゲームの終わり方。見出しがこれで決まる(仕様 §3.2)。
+  final BonusOutcome outcome;
 
   final VoidCallback onHome;
 
@@ -23,7 +25,7 @@ class BonusResultScreen extends StatelessWidget {
     required this.bestScore,
     required this.bestUpdated,
     required this.isSaving,
-    required this.cleared,
+    required this.outcome,
     required this.onHome,
   });
 
@@ -39,7 +41,11 @@ class BonusResultScreen extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  cleared ? '10 を作った!' : 'ここまで',
+                  switch (outcome) {
+                    BonusOutcome.cleared => '10 を作った!',
+                    BonusOutcome.gameOver => 'ゲームオーバー',
+                    BonusOutcome.gaveUp => 'ここまで',
+                  },
                   style: theme.textTheme.headlineMedium,
                 ),
                 const SizedBox(height: 16),

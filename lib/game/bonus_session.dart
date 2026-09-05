@@ -5,6 +5,21 @@ import 'package:flutter/foundation.dart';
 import '../data/bonus_repository.dart';
 import '../domain/bonus/bonus_grid.dart';
 
+/// ボーナスゲーム 1 回の終わり方。
+///
+/// bool 2 つ(クリアしたか・やめたか)では 3 状態を表せなくなったので
+/// 列挙にした。結果画面の見出しはこれで分岐する(仕様 §3.2)。
+enum BonusOutcome {
+  /// 10 を作った。
+  cleared,
+
+  /// 入れ替えを使い切った状態で詰んだ。
+  gameOver,
+
+  /// プレイヤーが自分でやめた。
+  gaveUp,
+}
+
 /// ボーナスゲーム 1 回分。
 ///
 /// 盤面のルールは [BonusGrid](純粋・イミュータブル)にあり、ここは
@@ -20,15 +35,21 @@ class BonusSession extends ChangeNotifier {
 
   BonusGrid _grid;
   int _score;
-  bool _cleared = false;
-  bool _gaveUp = false;
+  BonusOutcome? _outcome;
+  int _repairsUsed;
   int _lastRepairedCells = 0;
+  BonusMerge? _lastMerge;
+  int _moveCount = 0;
   bool _isSavingResult = false;
   bool _bestUpdated = false;
   bool _disposed = false;
 
   /// [grid] と [score] は新規なら `BonusGrid.deal(...)` と 0、再開なら
   /// [BonusRepository] に保存されていた値を渡す。
+  ///
+  /// [repairsUsed] は再開時に、保存されていた使用済みの回数を渡す。
+  /// 渡さないと中断・再開のたびに入れ替えが上限まで戻り、上限が
+  /// 事実上無くなる(仕様 §3.4)。
   ///
   /// `_grid` / `_score` は `this._grid` の initializing formal にしない
   /// — そのまま使うと名前付き引数がフィールド名の `_grid` / `_score` に
@@ -37,15 +58,28 @@ class BonusSession extends ChangeNotifier {
     required this.repository,
     required BonusGrid grid,
     required int score,
+    int repairsUsed = 0,
     Random? random,
   })  : _grid = grid, // ignore: prefer_initializing_formals
         _score = score, // ignore: prefer_initializing_formals
+        _repairsUsed = repairsUsed.clamp(0, kBonusRepairLimit),
         _random = random ?? Random();
 
   BonusGrid get grid => _grid;
   int get score => _score;
-  bool get isCleared => _cleared;
-  bool get isOver => _cleared || _gaveUp;
+
+  /// 終わっていなければ null。
+  BonusOutcome? get outcome => _outcome;
+
+  bool get isOver => _outcome != null;
+  bool get isCleared => _outcome == BonusOutcome.cleared;
+  bool get isGameOver => _outcome == BonusOutcome.gameOver;
+
+  /// このゲームで盤面を入れ替えた回数。
+  int get repairsUsed => _repairsUsed;
+
+  /// 残りの入れ替え回数。0 になると、次に詰んだ時点でゲームオーバー。
+  int get repairsLeft => kBonusRepairLimit - _repairsUsed;
 
   /// 直前の手で詰みの修復が書き換えたマス数。0 なら修復していない。
   ///
@@ -53,6 +87,17 @@ class BonusSession extends ChangeNotifier {
   /// 無言で盤面が書き換わると理不尽に見えるので、UI がこれを見て短い
   /// 通知を出す。
   int get lastRepairedCells => _lastRepairedCells;
+
+  /// 直近に成立した手。まだ 1 手も打っていなければ null。
+  ///
+  /// 盤面のアニメーションが「何がどこへ動いたか」を必要とする。前後の
+  /// 盤面を差分しても同値のマスの対応が復元できないので、盤面が返した
+  /// ものをそのまま渡す(仕様 §4.3)。
+  BonusMerge? get lastMerge => _lastMerge;
+
+  /// 成立した手の数。[lastMerge] の中身が同じでも手が進んだことを
+  /// 見分けるために使う(アニメーションの再生の引き金)。
+  int get moveCount => _moveCount;
 
   /// 結果の書き込みが確定するまで true。
   ///
@@ -66,21 +111,31 @@ class BonusSession extends ChangeNotifier {
 
   void tap(int index) {
     if (_disposed || isOver) return;
-    final merge = _grid.tap(index, _random);
+    // 残りが無いときだけ修復を断る。断った結果詰んでいたら、その手を
+    // 最後にゲームオーバー(仕様 §3.1)。打った手そのものは合法なので
+    // 得点は加算する。
+    final merge = _grid.tap(index, _random, repairIfStuck: repairsLeft > 0);
     // 不正な手では盤面が変わらないので、再描画も促さない。
     if (merge == null) return;
+
+    _lastMerge = merge;
+    _moveCount++;
 
     _grid = merge.grid;
     _score += merge.gained;
     _lastRepairedCells = merge.repairedCells;
+    if (merge.repairedCells > 0) _repairsUsed++;
 
     if (merge.cleared) {
-      _cleared = true;
+      _outcome = BonusOutcome.cleared;
+      _finish();
+    } else if (merge.isStuck) {
+      _outcome = BonusOutcome.gameOver;
       _finish();
     } else {
       // 1 手ごとに保存する。所要 5 分前後のゲームで、電話や
       // バックグラウンド化による中断は普通に起きる(仕様 §4.3)。
-      repository.saveProgress(_grid, _score).ignore();
+      repository.saveProgress(_grid, _score, _repairsUsed).ignore();
     }
     notifyListeners();
   }
@@ -88,7 +143,7 @@ class BonusSession extends ChangeNotifier {
   /// 途中でやめる。その時点のスコアを確定させる。
   void giveUp() {
     if (_disposed || isOver) return;
-    _gaveUp = true;
+    _outcome = BonusOutcome.gaveUp;
     _finish();
     notifyListeners();
   }

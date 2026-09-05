@@ -18,6 +18,17 @@ const int kBonusTarget = 10;
 /// [BonusGrid.maxValue] は空きを特別扱いせずに最大値を取れる。
 const int kBonusEmpty = 0;
 
+/// 1 ゲームで盤面を入れ替え(詰み修復)できる回数の上限。
+///
+/// 上限を使い切った状態で詰んだらゲームオーバー(仕様 §2)。値を 10 に
+/// したのは実測から: 10 到達率が 31.0% になり、1 日 1 回のゲームでは
+/// 「3 日に 1 回くらい 10 を見られる」水準になる。5 だと 5.5%(18 日に
+/// 1 回)で遠すぎ、15 だと 73.2% でほぼ負けなくなる(仕様 §2.2)。
+///
+/// カウントするのはセッション側([BonusSession])。盤面はそのゲームで
+/// 何回修復したかを知らなくてよい。
+const int kBonusRepairLimit = 10;
+
 /// 添字 [i] の上下左右の添字。
 ///
 /// 添字が隣(4 と 5 など)でも行が変われば盤面上では隣接しないため、
@@ -100,12 +111,23 @@ class BonusGrid {
   ///
   /// [random] は補充に使う。盤面自体は不変なので、乱数は呼び出しごとに
   /// 外から渡す(`PuzzleRepository` と同じ、注入して再現可能にする流儀)。
-  BonusMerge? tap(int index, Random random) {
+  ///
+  /// [repairIfStuck] を false にすると、補充後に詰んでいても修復せず、
+  /// [BonusMerge.isStuck] を true にして返す。入れ替えの回数を使い切った
+  /// セッションだけがこれを渡す(仕様 §2.4)。既定を true にしてあるのは、
+  /// 「tap は詰んだ盤面を返さない」という既存の不変条件をそのまま
+  /// 生かすため。
+  BonusMerge? tap(int index, Random random, {bool repairIfStuck = true}) {
     final component = componentAt(index);
     if (component.length < 2) return null;
 
     final value = cells[index];
     final count = component.length;
+    final removed = {
+      for (final i in component)
+        if (i != index) i,
+    };
+
     final next = List<int>.of(cells);
     for (final i in component) {
       next[i] = kBonusEmpty;
@@ -122,29 +144,58 @@ class BonusGrid {
         mergedValue: value,
         mergedCount: count,
         cleared: true,
+        removedCells: removed,
+        fallenCells: const {},
+        spawnedCells: const {},
+        mergedInto: index,
       );
     }
 
-    _applyGravity(next);
+    final fallen = _applyGravity(next);
     // 補充に使う最大値は「重力の直後・補充の前」に 1 度だけ決め、補充中は
     // 更新しない(仕様 §2.4)。1 手のあいだ補充の分布が揺れないようにする。
     final boardMax = next.reduce((a, b) => a > b ? a : b);
+    final spawned = <int>{};
     for (var i = 0; i < kBonusCells; i++) {
       if (next[i] == kBonusEmpty) {
         next[i] = spawnValue(boardMax, random);
+        spawned.add(i);
       }
     }
 
-    final repair = BonusGrid._(next).repairIfStuck(random);
+    // 修復で書き換わったマスも「新しい数字が現れた」ものとして扱う。
+    // どのマスが変わったかは BonusRepair が持っていないので、修復の
+    // 前後をここで突き合わせる。
+    var resulting = BonusGrid._(next);
+    var repairedCells = 0;
+    var usedFullShuffle = false;
+    var isStuck = false;
+    if (repairIfStuck) {
+      final beforeRepair = List<int>.of(next);
+      final repair = resulting.repairIfStuck(random);
+      resulting = repair.grid;
+      repairedCells = repair.changedCells;
+      usedFullShuffle = repair.usedFullShuffle;
+      for (var i = 0; i < kBonusCells; i++) {
+        if (resulting.cells[i] != beforeRepair[i]) spawned.add(i);
+      }
+    } else {
+      isStuck = !resulting.hasLegalMove;
+    }
 
     return BonusMerge(
-      grid: repair.grid,
+      grid: resulting,
       gained: value * count,
       mergedValue: value,
       mergedCount: count,
       cleared: false,
-      repairedCells: repair.changedCells,
-      usedFullShuffle: repair.usedFullShuffle,
+      removedCells: removed,
+      fallenCells: fallen,
+      spawnedCells: spawned,
+      mergedInto: fallen[index] ?? index,
+      repairedCells: repairedCells,
+      usedFullShuffle: usedFullShuffle,
+      isStuck: isStuck,
     );
   }
 
@@ -256,26 +307,65 @@ class BonusMerge {
   /// (仕様 §2.6)。実測では稀にしか true にならない(仕様 §11.5)。
   final bool usedFullShuffle;
 
+  /// この手で消えたマス。手を打つ**前**の座標系。
+  ///
+  /// タップしたマス自身は含まない(そのマスは消えずに `n+1` になる)。
+  final Set<int> removedCells;
+
+  /// 重力で動いたマス。手を打つ前の添字 → 打った後の添字。
+  /// 動かなかったマスは含まない。
+  final Map<int, int> fallenCells;
+
+  /// 補充で新しく湧いたマス。手を打った**後**の座標系。
+  ///
+  /// 詰み修復で書き換わったマスもここに含める。プレイヤーから見れば
+  /// 「新しい数字が現れた」ことに変わりはなく、アニメーションの扱いも
+  /// 同じでよい。
+  final Set<int> spawnedCells;
+
+  /// `n+1` になったマスの、手を打った**後**の位置。
+  final int mergedInto;
+
+  /// 修復を断った結果、合法手が無い盤面のまま返ってきたか。
+  ///
+  /// `tap(..., repairIfStuck: false)` を渡したときにだけ true になりうる。
+  /// セッションはこれを見てゲームオーバーを確定する(仕様 §3.1)。
+  final bool isStuck;
+
   const BonusMerge({
     required this.grid,
     required this.gained,
     required this.mergedValue,
     required this.mergedCount,
     required this.cleared,
+    required this.removedCells,
+    required this.fallenCells,
+    required this.spawnedCells,
+    required this.mergedInto,
     this.repairedCells = 0,
     this.usedFullShuffle = false,
+    this.isStuck = false,
   });
 }
 
 /// 列ごとに重力を適用する。空でないマスが順序を保って下端へ落ち、
 /// 空きは上端に集まる。[cells] を直接書き換える。
-void _applyGravity(List<int> cells) {
+///
+/// 動いたマスの「元の添字 → 新しい添字」を返す。動かなかったマスは
+/// 含まない。アニメーションがこの対応を必要とするが、**前後の盤面の
+/// 差分からは復元できない** — 同じ値のマスが複数あると対応が一意に
+/// 決まらないため。ここでは確定しているので、そのまま返す。
+Map<int, int> _applyGravity(List<int> cells) {
+  final moved = <int, int>{};
   for (var col = 0; col < kBonusSize; col++) {
     var write = kBonusSize - 1;
     for (var row = kBonusSize - 1; row >= 0; row--) {
-      final value = cells[row * kBonusSize + col];
+      final from = row * kBonusSize + col;
+      final value = cells[from];
       if (value != kBonusEmpty) {
-        cells[write * kBonusSize + col] = value;
+        final to = write * kBonusSize + col;
+        cells[to] = value;
+        if (to != from) moved[from] = to;
         write--;
       }
     }
@@ -283,6 +373,7 @@ void _applyGravity(List<int> cells) {
       cells[row * kBonusSize + col] = kBonusEmpty;
     }
   }
+  return moved;
 }
 
 /// 詰みの修復結果。

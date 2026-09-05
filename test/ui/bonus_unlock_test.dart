@@ -1,10 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:make10/data/bonus_repository.dart';
 import 'package:make10/data/stats_repository.dart';
-import 'package:make10/domain/bonus/bonus_grid.dart';
 import 'package:make10/domain/bonus_ticket.dart';
 import 'package:make10/game/time_attack_session.dart';
 import 'package:make10/ui/home_screen.dart';
@@ -21,15 +22,6 @@ Future<BonusRepository> loadedRepo() async {
   await repo.load();
   return repo;
 }
-
-/// 25 マスの合法な盤面。
-BonusGrid _playableGrid() => BonusGrid.of([
-      1, 1, 3, 1, 2,
-      3, 1, 2, 3, 1,
-      2, 3, 1, 2, 3,
-      1, 2, 3, 1, 2,
-      3, 1, 2, 3, 1,
-    ]);
 
 /// app_boot_test.dart / interstitial_wiring_test.dart と同じ理由: rootBundle
 /// は assets/puzzles.json の loadString の Future をプロセス全体で
@@ -76,12 +68,16 @@ void main() {
       expect(repo.ticket.isAvailable(today()), isFalse);
     });
 
-    test('その日すでに遊んでいれば 5 問でも解禁しない', () async {
+    test('今日の上限まで獲得済みなら増えない', () async {
+      // 「その日すでに遊んでいれば5問でも解禁しない」という旧テストは
+      // ここにあった。回数制ではまさに逆になる — 遊んだ後でも5問クリア
+      // すればまた増える — ので削除して置き換える(計画 Task 4 Step 5)。
       final repo = await loadedRepo();
-      await repo.earn(today());
-      await repo.startGame(today(), _playableGrid());
+      for (var i = 0; i < kBonusPlaysPerDay; i++) {
+        expect(await repo.earn(today()), isTrue);
+      }
       expect(await repo.earn(today()), isFalse);
-      expect(repo.ticket.isAvailable(today()), isFalse);
+      expect(repo.ticket.earned, kBonusPlaysPerDay);
     });
   });
 
@@ -180,7 +176,7 @@ void main() {
     // ドメインレベルのテストが中心で、それは Task 5 で既にカバーされている
     // (上の「解禁の判定」グループがその重複)。ここでは
     // HomeScreen._startTimeAttack の onFinished 配線と
-    // _BonusUnlockNotice の表示を、実際の画面遷移を通して確認する。
+    // BonusEarnNotice の表示を、実際の画面遷移を通して確認する。
     Future<void> bootToHome(WidgetTester tester) async {
       await tester.pumpWidget(
         const ProviderScope(child: MaterialApp(home: HomeScreen())),
@@ -214,7 +210,7 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ボーナスゲーム解禁'), findsNothing);
+      expect(find.textContaining('ボーナスゲーム +1回'), findsNothing);
 
       await tester.tap(find.text('ホームへ'));
       await tester.pumpAndSettle();
@@ -237,13 +233,48 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('ボーナスゲーム解禁'), findsOneWidget);
+      expect(find.textContaining('ボーナスゲーム +1回'), findsOneWidget);
 
       await tester.tap(find.text('ホームへ'));
       await tester.pumpAndSettle();
 
-      expect(find.text('★ ボーナスゲーム'), findsOneWidget,
+      expect(find.text('★ ボーナスゲーム（あと 1 回）'), findsOneWidget,
           reason: '5 問クリアしたのにボーナスが解禁されていない');
+    });
+
+    testWidgets('今日の上限まで獲得済みなら5問クリアしても告知が出ない', (tester) async {
+      // Task 4 Step 7 の変異検査の要となるテスト。BonusEarnNotice を直接
+      // 組み立てる bonus_earn_notice_test.dart は onFinished の配線自体を
+      // 通らないため、home_screen.dart 側の
+      // 「if (!await bonus.earn(today)) return;」を
+      // 「await bonus.earn(today);」に変異させても検出できない
+      // (計画のコメントが明示的に警告している穴)。実際の
+      // HomeScreen -> TimeAttackScreen の配線を通し、今日の上限まで
+      // 獲得済みの状態から5問クリアしても告知が出ないことをここで見る。
+      SharedPreferences.setMockInitialValues({
+        'make10.bonus': jsonEncode({
+          'version': 2,
+          'bestScore': 0,
+          'day': today(),
+          'earned': kBonusPlaysPerDay,
+          'played': kBonusPlaysPerDay,
+        }),
+      });
+      await bootToHome(tester);
+      final ta = await startTimeAttackFromHome(tester);
+
+      for (var i = 0; i < 5; i++) {
+        playSolution(ta.session);
+        await tester.pump();
+      }
+      ta.tick(kTimeAttackDuration);
+      await tester.pump();
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('ボーナスゲーム +1回'), findsNothing,
+          reason: '今日の上限に達しているのに獲得の告知が出ている');
+      expect(find.textContaining('遊べます'), findsNothing);
     });
   });
 }

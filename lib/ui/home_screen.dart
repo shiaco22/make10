@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -103,6 +103,14 @@ class HomeScreen extends ConsumerWidget {
       stats: stats,
       difficulty: difficulty,
     )..start();
+    // この勝負で獲得できたかを告知へ渡す。チケットの状態を見ると、勝負の前
+    // から残っていた回数まで「獲得した」ことになってしまう（仕様 §5）。
+    final earnedPlaysLeft = ValueNotifier<int?>(null);
+    // onFinished は bonus.earn の保存を待つ非同期処理。その完了より前に
+    // リザルトを離れられると、下の .then が earnedPlaysLeft を dispose した
+    // 後にここへ書き込みかねない。TimeAttackSession._disposed と同じ考え方
+    // で、dispose 後の書き込みを止める。
+    var earnedPlaysLeftDisposed = false;
     final navigator = Navigator.of(context);
     navigator
         .push(
@@ -119,13 +127,20 @@ class HomeScreen extends ConsumerWidget {
               onLeavingResult: coordinator.onLeavingTimeAttackResult,
               onFinished: (score) async {
                 if (score < kBonusUnlockClears) return;
-                await bonus.earn(bonusDateKey(DateTime.now()));
+                final today = bonusDateKey(DateTime.now());
+                if (!await bonus.earn(today)) return;
+                if (earnedPlaysLeftDisposed) return;
+                earnedPlaysLeft.value = bonus.ticket.playsLeft(today);
               },
-              resultNotice: _BonusUnlockNotice(bonus: bonus),
+              resultNotice: BonusEarnNotice(earnedPlaysLeft: earnedPlaysLeft),
             ),
           ),
         )
-        .then((_) => session.dispose());
+        .then((_) {
+          session.dispose();
+          earnedPlaysLeftDisposed = true;
+          earnedPlaysLeft.dispose();
+        });
   }
 
   @override
@@ -442,34 +457,38 @@ class _BonusEntryState extends ConsumerState<_BonusEntry> {
   }
 }
 
-/// タイムアタックのリザルトに出す、ボーナスゲーム解禁の告知。
+/// タイムアタックのリザルトに出す、ボーナスゲーム獲得の告知。
 ///
-/// [BonusRepository] を購読しているので、`onFinished` が非同期に
-/// `earn` を終えた時点で自動的に現れる。5 問未満だった勝負では
-/// `earn` が呼ばれないので、何も描かない。
-class _BonusUnlockNotice extends StatelessWidget {
-  final BonusRepository bonus;
+/// **チケットの状態ではなく「この勝負で増えたか」で出す。** 回数制では
+/// 勝負の前から回数が残っていることがあり、状態だけを見ると 4 問しか
+/// クリアしていない勝負でも告知が出てしまう（仕様 §5）。
+///
+/// [earnedPlaysLeft] は、この勝負で獲得できたときに残り回数が入り、
+/// 獲得できなかった（5 問未満、または今日の上限に達していた）ときは
+/// null のまま。`onFinished` が非同期に `earn` を終えてから値が入るので、
+/// 告知は後から現れる。
+class BonusEarnNotice extends StatelessWidget {
+  final ValueListenable<int?> earnedPlaysLeft;
 
-  const _BonusUnlockNotice({required this.bonus});
+  const BonusEarnNotice({super.key, required this.earnedPlaysLeft});
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: bonus,
-      builder: (context, _) {
-        final today = bonusDateKey(DateTime.now());
-        if (!bonus.ticket.isAvailable(today)) return const SizedBox.shrink();
+    return ValueListenableBuilder<int?>(
+      valueListenable: earnedPlaysLeft,
+      builder: (context, left, _) {
+        if (left == null) return const SizedBox.shrink();
         final theme = Theme.of(context);
         return Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'ボーナスゲーム解禁!',
+              'ボーナスゲーム +1回',
               style: theme.textTheme.titleMedium
                   ?.copyWith(color: theme.colorScheme.primary),
             ),
             const SizedBox(height: 4),
-            Text('ホームから遊べます', style: theme.textTheme.bodySmall),
+            Text('あと $left 回遊べます', style: theme.textTheme.bodySmall),
           ],
         );
       },

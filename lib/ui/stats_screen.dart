@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../data/bonus_repository.dart';
 import '../data/stats_repository.dart';
 import '../domain/difficulty.dart';
 
 class StatsScreen extends StatelessWidget {
   final StatsRepository stats;
 
-  const StatsScreen({super.key, required this.stats});
+  /// ボーナスゲームのベストスコアの出どころ。省略時（null）はボーナスの
+  /// 欄を出さない。
+  ///
+  /// 難易度別ではなく 1 つの値。ボーナスゲームに難易度が無いため。
+  final BonusRepository? bonus;
+
+  const StatsScreen({super.key, required this.stats, this.bonus});
 
   String _average(int? ms) {
     if (ms == null) return '-';
@@ -21,6 +28,23 @@ class StatsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (bonus != null)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: AnimatedBuilder(
+                  animation: bonus!,
+                  builder: (context, _) => Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('ボーナスゲーム', style: theme.textTheme.titleLarge),
+                      const SizedBox(height: 8),
+                      Text('ベスト ${bonus!.bestScore} 点'),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           for (final difficulty in Difficulty.values)
             Card(
               child: Padding(

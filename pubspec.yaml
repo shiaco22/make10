@@ -45,6 +45,12 @@ dev_dependencies:
   # 明示的な (dev) 依存にする。
   in_app_purchase_platform_interface: ^1.4.1
 
+  # shared_preferences の推移的依存。BonusRepository のテストで
+  # InMemorySharedPreferencesStore を直接 extends し、setValue の確定
+  # タイミングを握って保存の直列化を検査するために import するので、
+  # 明示的な (dev) 依存にする。
+  shared_preferences_platform_interface: ^2.4.2
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your

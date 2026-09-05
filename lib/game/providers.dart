@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/ad_policy_repository.dart';
+import '../data/bonus_repository.dart';
 import '../data/entitlement_repository.dart';
 import '../data/history_repository.dart';
 import '../data/puzzle_repository.dart';
@@ -81,4 +82,16 @@ final interstitialAdCoordinatorProvider =
     entitlements: entitlements,
     persistClearsSinceLastAd: adPolicyRepo.save,
   );
+});
+
+/// ボーナスゲームのベストスコア・1 日 1 回の権利・中断した盤面。
+///
+/// [ChangeNotifier] なので、ホーム画面の入口とタイムアタックのリザルトは
+/// このインスタンス自身を [AnimatedBuilder] で購読する（プロバイダの
+/// 再評価では状態変化を検知できない — entitlementRepositoryProvider と
+/// 同じ理由）。
+final bonusRepositoryProvider = FutureProvider<BonusRepository>((ref) async {
+  final repo = BonusRepository();
+  await repo.load();
+  return repo;
 });

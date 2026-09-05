@@ -4,17 +4,17 @@ import 'package:flutter/material.dart';
 
 import '../../domain/bonus/bonus_grid.dart';
 
-/// 消滅にかける時間。
-const Duration _kVanishDuration = Duration(milliseconds: 120);
-
-/// 落下にかける時間。
-const Duration _kFallDuration = Duration(milliseconds: 180);
-
-/// 1 手ぶんのアニメーション全体(消滅 + 落下)。
+/// 1 手ぶんのアニメーション全体(消滅 120ms + 落下 180ms、仕様 §4.2)。
+///
+/// 消滅・落下を別々の [Duration] 定数として持たず、1 本の
+/// [AnimationController] の進み具合(0.0〜1.0)を [_kVanishFraction] で
+/// 割って 2 段階を区切っている。個別の Duration 定数は実際どこからも
+/// 参照されない飾りになってしまう(analyzer の unused_element で検出済み)
+/// ため、使う側の値だけを残す。
 const Duration _kMoveDuration = Duration(milliseconds: 300);
 
 /// 全体に占める消滅の割合。落下はこの後から始まる(重ねない、仕様 §4.2)。
-/// `_kVanishDuration / _kMoveDuration` を約分した値(120 / 300)。
+/// 消滅 120ms / 全体 300ms を約分した値。
 const double _kVanishFraction = 120 / 300;
 
 /// 5×5 の盤面。

@@ -18,6 +18,17 @@ const int kBonusTarget = 10;
 /// [BonusGrid.maxValue] は空きを特別扱いせずに最大値を取れる。
 const int kBonusEmpty = 0;
 
+/// 1 ゲームで盤面を入れ替え(詰み修復)できる回数の上限。
+///
+/// 上限を使い切った状態で詰んだらゲームオーバー(仕様 §2)。値を 10 に
+/// したのは実測から: 10 到達率が 31.0% になり、1 日 1 回のゲームでは
+/// 「3 日に 1 回くらい 10 を見られる」水準になる。5 だと 5.5%(18 日に
+/// 1 回)で遠すぎ、15 だと 73.2% でほぼ負けなくなる(仕様 §2.2)。
+///
+/// カウントするのはセッション側([BonusSession])。盤面はそのゲームで
+/// 何回修復したかを知らなくてよい。
+const int kBonusRepairLimit = 10;
+
 /// 添字 [i] の上下左右の添字。
 ///
 /// 添字が隣(4 と 5 など)でも行が変われば盤面上では隣接しないため、
@@ -100,7 +111,13 @@ class BonusGrid {
   ///
   /// [random] は補充に使う。盤面自体は不変なので、乱数は呼び出しごとに
   /// 外から渡す(`PuzzleRepository` と同じ、注入して再現可能にする流儀)。
-  BonusMerge? tap(int index, Random random) {
+  ///
+  /// [repairIfStuck] を false にすると、補充後に詰んでいても修復せず、
+  /// [BonusMerge.isStuck] を true にして返す。入れ替えの回数を使い切った
+  /// セッションだけがこれを渡す(仕様 §2.4)。既定を true にしてあるのは、
+  /// 「tap は詰んだ盤面を返さない」という既存の不変条件をそのまま
+  /// 生かすため。
+  BonusMerge? tap(int index, Random random, {bool repairIfStuck = true}) {
     final component = componentAt(index);
     if (component.length < 2) return null;
 
@@ -149,14 +166,25 @@ class BonusGrid {
     // 修復で書き換わったマスも「新しい数字が現れた」ものとして扱う。
     // どのマスが変わったかは BonusRepair が持っていないので、修復の
     // 前後をここで突き合わせる。
-    final beforeRepair = List<int>.of(next);
-    final repair = BonusGrid._(next).repairIfStuck(random);
-    for (var i = 0; i < kBonusCells; i++) {
-      if (repair.grid.cells[i] != beforeRepair[i]) spawned.add(i);
+    var resulting = BonusGrid._(next);
+    var repairedCells = 0;
+    var usedFullShuffle = false;
+    var isStuck = false;
+    if (repairIfStuck) {
+      final beforeRepair = List<int>.of(next);
+      final repair = resulting.repairIfStuck(random);
+      resulting = repair.grid;
+      repairedCells = repair.changedCells;
+      usedFullShuffle = repair.usedFullShuffle;
+      for (var i = 0; i < kBonusCells; i++) {
+        if (resulting.cells[i] != beforeRepair[i]) spawned.add(i);
+      }
+    } else {
+      isStuck = !resulting.hasLegalMove;
     }
 
     return BonusMerge(
-      grid: repair.grid,
+      grid: resulting,
       gained: value * count,
       mergedValue: value,
       mergedCount: count,
@@ -165,8 +193,9 @@ class BonusGrid {
       fallenCells: fallen,
       spawnedCells: spawned,
       mergedInto: fallen[index] ?? index,
-      repairedCells: repair.changedCells,
-      usedFullShuffle: repair.usedFullShuffle,
+      repairedCells: repairedCells,
+      usedFullShuffle: usedFullShuffle,
+      isStuck: isStuck,
     );
   }
 
@@ -297,6 +326,12 @@ class BonusMerge {
   /// `n+1` になったマスの、手を打った**後**の位置。
   final int mergedInto;
 
+  /// 修復を断った結果、合法手が無い盤面のまま返ってきたか。
+  ///
+  /// `tap(..., repairIfStuck: false)` を渡したときにだけ true になりうる。
+  /// セッションはこれを見てゲームオーバーを確定する(仕様 §3.1)。
+  final bool isStuck;
+
   const BonusMerge({
     required this.grid,
     required this.gained,
@@ -309,6 +344,7 @@ class BonusMerge {
     required this.mergedInto,
     this.repairedCells = 0,
     this.usedFullShuffle = false,
+    this.isStuck = false,
   });
 }
 

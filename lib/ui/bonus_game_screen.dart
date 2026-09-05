@@ -167,6 +167,8 @@ class _BonusGameScreenState extends State<BonusGameScreen> {
                           child: BonusGridView(
                             grid: session.grid,
                             onTapCell: session.tap,
+                            lastMerge: session.lastMerge,
+                            moveSerial: session.moveCount,
                           ),
                         ),
                         if (session.isGameOver)

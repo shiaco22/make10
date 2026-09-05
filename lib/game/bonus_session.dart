@@ -38,6 +38,8 @@ class BonusSession extends ChangeNotifier {
   BonusOutcome? _outcome;
   int _repairsUsed;
   int _lastRepairedCells = 0;
+  BonusMerge? _lastMerge;
+  int _moveCount = 0;
   bool _isSavingResult = false;
   bool _bestUpdated = false;
   bool _disposed = false;
@@ -86,6 +88,17 @@ class BonusSession extends ChangeNotifier {
   /// 通知を出す。
   int get lastRepairedCells => _lastRepairedCells;
 
+  /// 直近に成立した手。まだ 1 手も打っていなければ null。
+  ///
+  /// 盤面のアニメーションが「何がどこへ動いたか」を必要とする。前後の
+  /// 盤面を差分しても同値のマスの対応が復元できないので、盤面が返した
+  /// ものをそのまま渡す(仕様 §4.3)。
+  BonusMerge? get lastMerge => _lastMerge;
+
+  /// 成立した手の数。[lastMerge] の中身が同じでも手が進んだことを
+  /// 見分けるために使う(アニメーションの再生の引き金)。
+  int get moveCount => _moveCount;
+
   /// 結果の書き込みが確定するまで true。
   ///
   /// [ResultScreen] と同じ理由で必要。時間切れ(ここではクリア)の瞬間は
@@ -104,6 +117,9 @@ class BonusSession extends ChangeNotifier {
     final merge = _grid.tap(index, _random, repairIfStuck: repairsLeft > 0);
     // 不正な手では盤面が変わらないので、再描画も促さない。
     if (merge == null) return;
+
+    _lastMerge = merge;
+    _moveCount++;
 
     _grid = merge.grid;
     _score += merge.gained;

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
 import 'billing_gateway.dart';
@@ -32,7 +33,15 @@ class IoBillingGateway implements BillingGateway {
     // 起動後なるべく早く購読を始める（プラグインの推奨）。取りこぼした
     // 更新は、次回起動時に再配信されるものに限られる。
     await _subscription?.cancel();
-    _subscription = _iap.purchaseStream.listen(_onPurchaseUpdates);
+    // onError を渡さないと、ストアに接続できない端末で流れてくるエラーが
+    // 誰にも拾われない非同期例外になる。購入が来ないだけで、ゲーム本体は
+    // 動き続けてよい。
+    _subscription = _iap.purchaseStream.listen(
+      _onPurchaseUpdates,
+      onError: (Object error) {
+        debugPrint('MAKE10: 課金ストリームのエラー（無視します）: $error');
+      },
+    );
   }
 
   Future<void> _onPurchaseUpdates(List<PurchaseDetails> purchases) async {

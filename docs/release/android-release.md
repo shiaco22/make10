@@ -140,7 +140,7 @@ GitHub → Actions → **Build the Android release bundle** → Run workflow。
    スクリーンショットは `store/android/`（スマホ8枚・タブレット2種各5枚）に撮影済み
 4. **アプリのコンテンツ** — 以下をすべて申告する。回答案は `store/play-listing.md` にある
    - プライバシーポリシー
-   - アプリのアクセス権 → 制限なし
+   - ログインの詳細（旧「アプリのアクセス権」）→ **はい**＋手順文（`store/play-listing.md`）
    - 広告 → **広告あり**
    - コンテンツのレーティング → アンケートに回答（全年齢になる想定）
    - 対象ユーザー

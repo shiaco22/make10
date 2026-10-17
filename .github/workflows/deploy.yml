@@ -11,15 +11,19 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+# The runner label is pinned rather than `ubuntu-latest`: that label moves to
+# Ubuntu 26 on 2026-10-19, and a toolchain that changes on a date nobody chose
+# turns an unrelated push into a debugging session. Bump it deliberately, after
+# a green run. The release workflow is pinned the same way.
 jobs:
   # Tests and static analysis gate the deploy. `flutter analyze` cannot run on
   # the maintainer's machine because the working copy lives under a path with
   # non-ASCII characters, which crashes the Dart analysis server -- see the
   # README. The runner's path is ASCII, so CI is where analysis actually runs.
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -45,9 +49,9 @@ jobs:
 
   build:
     needs: check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: subosito/flutter-action@v2
         with:
@@ -62,14 +66,14 @@ jobs:
       - name: Build web
         run: flutter build web --release --no-tree-shake-icons --base-href "/${GITHUB_REPOSITORY#*/}/"
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: build/web
 
   deploy:
     needs: build
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     permissions:
       pages: write
@@ -81,4 +85,4 @@ jobs:
 
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

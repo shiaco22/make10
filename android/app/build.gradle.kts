@@ -60,6 +60,13 @@ android {
                 } else {
                     signingConfigs.getByName("debug")
                 }
+            // proguard-rules.pro explains why these are needed: without them
+            // R8 strips a constructor Room's generated database needs, and the
+            // app dies at process start in the release build only.
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }

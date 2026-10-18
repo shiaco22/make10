@@ -16,10 +16,9 @@ concurrency:
 # turns an unrelated push into a debugging session. Bump it deliberately, after
 # a green run. The release workflow is pinned the same way.
 jobs:
-  # Tests and static analysis gate the deploy. `flutter analyze` cannot run on
-  # the maintainer's machine because the working copy lives under a path with
-  # non-ASCII characters, which crashes the Dart analysis server -- see the
-  # README. The runner's path is ASCII, so CI is where analysis actually runs.
+  # Tests and static analysis gate the deploy. Both also run locally, from an
+  # ASCII-only checkout: a path with non-ASCII characters crashes the Dart
+  # analysis server -- see the README.
   check:
     runs-on: ubuntu-24.04
     steps:

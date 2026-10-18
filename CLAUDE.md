@@ -85,6 +85,24 @@ Play Console の1回限りのアイテムは「アイテム → 購入オプシ�
 **非 ASCII パスでは Android ビルドが通らない。** AGP がパスを拒否する。
 `C:\Users\shima\claude\make10` は ASCII なので問題ない。
 
+**NDK は手で入れる。** 初回ビルドで AGP が NDK を取りに行き、こう落ちる。
+
+```
+Package ndk not found.
+Package 28.2.13676358 not found.
+Android sdkmanager did not install NDK 28.2.13676358
+```
+
+Android SDK の cmdline-tools 23 で `sdkmanager` が廃止されて新しい `android`
+CLI に置き換わり、パッケージ名も `ndk;28.2.13676358` から `ndk/28.2.13676358`
+の書式に変わった。AGP が渡す古い書式の名前を受け付けない。build-tools は AGP が
+自力で取れるので、引っかかるのは NDK だけ。要求される版は `flutter.ndkVersion`
+で決まるので、エラーに出た版をそのまま入れる。
+
+```
+%LOCALAPPDATA%\Android\Sdk\cmdline-tools\latest\bin\android.exe sdk install ndk/28.2.13676358
+```
+
 ## ドキュメント
 
 | 内容 | 場所 |

@@ -4,8 +4,8 @@ MAKE10 を Google Play に出すまでの手順。**署名鍵まわりが唯一�
 部分**なので、そこだけ先に読んでほしい。
 
 - パッケージ名: `com.nanaumi.make10`（公開後は**永久に変更不可**）
-- 現在のバージョン: `pubspec.yaml` の `version: 1.0.0+1`
-  （`1.0.0` = versionName、`1` = versionCode）
+- 現在のバージョン: `pubspec.yaml` の `version: 1.0.0+2`
+  （`1.0.0` = versionName、`2` = versionCode）
 
 > **リリース前に必ず片付けること（2件）**
 >

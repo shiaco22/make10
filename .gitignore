@@ -57,3 +57,6 @@ app.*.map.json
 
 # 署名鍵の保管場所（絶対にコミットしない）
 /_keys_DO_NOT_COMMIT/
+
+# Claude のセッションが書き出す成果物（ストア画像の zip など）
+/Claude outputs/

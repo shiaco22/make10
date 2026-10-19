@@ -228,6 +228,78 @@ void main() {
     });
   });
 
+  group('restore feedback', () {
+    const restoredLifetime = PurchaseUpdate(
+      productId: ProductIds.noAdsLifetime,
+      outcome: PurchaseOutcome.granted,
+      isRestore: true,
+    );
+
+    testWidgets(
+        'confirms the restore even when the user was already entitled, '
+        'where nothing else on screen changes', (tester) async {
+      final entitlements = await freshRepo();
+      await entitlements.grantLifetime();
+      final billing = FakeBillingGateway(products: [_monthly, _lifetime])
+        ..restoreResults = const [restoredLifetime];
+      await pumpScreen(tester, billing, entitlements);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, '購入を復元'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('購入を復元しました'), findsOneWidget);
+    });
+
+    testWidgets('says so when the store has nothing to restore',
+        (tester) async {
+      final billing = FakeBillingGateway(products: [_monthly, _lifetime]);
+      await pumpScreen(tester, billing, await freshRepo());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, '購入を復元'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('復元できる購入が見つかりませんでした'), findsOneWidget);
+    });
+
+    testWidgets(
+        'a result that arrives after the request finished replaces '
+        '"nothing found"', (tester) async {
+      final billing = FakeBillingGateway(products: [_monthly, _lifetime]);
+      await pumpScreen(tester, billing, await freshRepo());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, '購入を復元'));
+      await tester.pumpAndSettle();
+      expect(find.text('復元できる購入が見つかりませんでした'), findsOneWidget);
+
+      // On iOS the store's answer can land after restorePurchases returns.
+      billing.emit(restoredLifetime);
+      await tester.pumpAndSettle();
+
+      expect(find.text('購入を復元しました'), findsOneWidget);
+      expect(find.text('復元できる購入が見つかりませんでした'), findsNothing);
+    });
+
+    testWidgets('says so when the restore fails, and can be tried again',
+        (tester) async {
+      final billing = FakeBillingGateway(products: [_monthly, _lifetime])
+        ..restoreError = StateError('Play Store unreachable');
+      await pumpScreen(tester, billing, await freshRepo());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.widgetWithText(TextButton, '購入を復元'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('復元できませんでした'), findsOneWidget);
+      final button = tester
+          .widget<TextButton>(find.widgetWithText(TextButton, '購入を復元'));
+      expect(button.onPressed, isNotNull,
+          reason: 'a failed restore must not leave the button stuck');
+    });
+  });
+
   group('already entitled', () {
     testWidgets('shows which product is active instead of buy buttons',
         (tester) async {

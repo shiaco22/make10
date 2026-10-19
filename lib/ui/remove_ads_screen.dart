@@ -46,6 +46,13 @@ class _RemoveAdsScreenState extends State<RemoveAdsScreen> {
 
   bool _restoring = false;
 
+  /// 「購入を復元」の結果。権利が既にあると復元しても画面は何も変わらない
+  /// ので、成否をここで言葉にして伝える。
+  String? _restoreMessage;
+
+  /// 今回の「購入を復元」で、ストアから権利が 1 件でも届いたか。
+  bool _restoreFound = false;
+
   StreamSubscription<PurchaseUpdate>? _subscription;
 
   @override
@@ -82,6 +89,10 @@ class _RemoveAdsScreenState extends State<RemoveAdsScreen> {
       if (update.outcome != PurchaseOutcome.pending) {
         _inFlight.remove(update.productId);
       }
+      if (update.isRestore && update.outcome == PurchaseOutcome.granted) {
+        _restoreFound = true;
+        _restoreMessage = '購入を復元しました';
+      }
     });
     if (update.outcome == PurchaseOutcome.granted) {
       if (update.productId == ProductIds.noAdsLifetime) {
@@ -111,9 +122,29 @@ class _RemoveAdsScreenState extends State<RemoveAdsScreen> {
   }
 
   Future<void> _restore() async {
-    setState(() => _restoring = true);
-    await widget.billing.restorePurchases();
-    if (mounted) setState(() => _restoring = false);
+    setState(() {
+      _restoring = true;
+      _restoreMessage = null;
+    });
+    _restoreFound = false;
+    try {
+      await widget.billing.restorePurchases();
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _restoring = false;
+        _restoreMessage = '復元できませんでした。通信状態を確認して、もう一度お試しください';
+      });
+      return;
+    }
+    // ストアの返答は戻り値ではなく purchaseUpdates に流れてくる。配送待ちの
+    // ものを先に受け取ってから、何も来なかったかどうかを判断する。
+    await Future<void>.delayed(Duration.zero);
+    if (!mounted) return;
+    setState(() {
+      _restoring = false;
+      if (!_restoreFound) _restoreMessage = '復元できる購入が見つかりませんでした';
+    });
   }
 
   @override
@@ -137,6 +168,8 @@ class _RemoveAdsScreenState extends State<RemoveAdsScreen> {
                   child: Text(_restoring ? '復元中…' : '購入を復元'),
                 ),
               ),
+              if (_restoreMessage case final message?)
+                Text(message, textAlign: TextAlign.center),
             ],
           ),
         ),

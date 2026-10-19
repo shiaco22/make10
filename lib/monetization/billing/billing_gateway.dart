@@ -102,6 +102,17 @@ abstract class BillingGateway {
   /// して [purchaseUpdates] に届く。
   Future<void> restorePurchases();
 
+  /// 起動時に一度呼ぶ。ユーザー操作なしで、ストアに残っている有効な購入を
+  /// 取り直す。結果は [restorePurchases] と同じく [purchaseUpdates] /
+  /// [entitlementChanges] に届く。
+  ///
+  /// Android の定期購入は自動更新されてもアプリへ何も届かない。これを
+  /// 呼ばないと `EntitlementRepository` の信頼期間（35 日）が延びず、
+  /// 払い続けている会員にも広告が戻ってしまう。
+  ///
+  /// 失敗は呼び出し側に投げる。起動を止めないのは呼び出し側の責任。
+  Future<void> syncPurchases();
+
   /// 両商品について、状態が変わるたびに 1 件ずつ届く。pending / canceled /
   /// failed も含む全件。
   Stream<PurchaseUpdate> get purchaseUpdates;

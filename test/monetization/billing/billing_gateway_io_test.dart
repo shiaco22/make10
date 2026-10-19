@@ -293,6 +293,22 @@ void main() {
     expect(fake.restoreCallCount, 1);
   });
 
+  group('syncPurchases (the startup sync)', () {
+    tearDown(() => debugDefaultTargetPlatformOverride = null);
+
+    test('asks the store for the purchases the user already owns on Android', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      await gateway.syncPurchases();
+      expect(fake.restoreCallCount, 1);
+    });
+
+    test('never asks on iOS, where a restore can prompt for an Apple ID at launch', () async {
+      debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+      await gateway.syncPurchases();
+      expect(fake.restoreCallCount, 0);
+    });
+  });
+
   test('entitlementChanges ignores a granted purchase for an unrecognized product id', () async {
     final grants = <String>[];
     gateway.entitlementChanges.listen(grants.add);

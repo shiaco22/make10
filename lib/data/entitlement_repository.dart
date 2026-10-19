@@ -65,7 +65,8 @@ class EntitlementRepository extends ChangeNotifier {
   }
 
   /// 月額購読 `make10_noads_monthly` が有効だとストアから確認できるたびに呼ぶ
-  /// （新規購入時、および起動時の restorePurchases で再確認できたときの両方）。
+  /// （新規購入時、および起動時の同期 `startEntitlementSync` で再確認できた
+  /// ときの両方）。
   ///
   /// 既に買い切りを保持している場合は何もしない。買い切りは購読より
   /// 上位の権利であり、これを購読の情報で上書きすると、将来この

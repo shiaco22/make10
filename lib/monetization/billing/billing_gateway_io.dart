@@ -118,6 +118,14 @@ class IoBillingGateway implements BillingGateway {
   Future<void> restorePurchases() => _iap.restorePurchases();
 
   @override
+  Future<void> syncPurchases() async {
+    // iOS の restore は Apple ID のサインインを求めることがあり、起動の
+    // たびに出すわけにはいかない。Android の問い合わせは画面に何も出ない。
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    await _iap.restorePurchases();
+  }
+
+  @override
   Stream<PurchaseUpdate> get purchaseUpdates => _updatesController.stream;
 
   @override

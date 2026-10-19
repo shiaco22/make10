@@ -92,6 +92,23 @@ class FakeBillingGateway implements BillingGateway {
     restoreCalls++;
   }
 
+  int syncCalls = 0;
+
+  /// [syncPurchases] が呼ばれた瞬間に流す更新。起動時の同期でストアが
+  /// 返してくる「既に持っている購入」に相当する。
+  List<PurchaseUpdate> syncResults = const [];
+
+  /// 設定すると [syncPurchases] がこれを投げる（ストアに繋がらない端末）。
+  Object? syncError;
+
+  @override
+  Future<void> syncPurchases() async {
+    syncCalls++;
+    final error = syncError;
+    if (error != null) throw error;
+    syncResults.forEach(emit);
+  }
+
   @override
   Stream<PurchaseUpdate> get purchaseUpdates => _updates.stream;
 

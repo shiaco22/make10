@@ -7,6 +7,7 @@ import 'data/entitlement_repository.dart';
 import 'game/providers.dart';
 import 'monetization/ads/ad_gateway.dart';
 import 'monetization/billing/billing_gateway.dart';
+import 'monetization/billing/entitlement_sync.dart';
 import 'ui/app.dart';
 
 /// 起動処理のうち「失敗してもゲームは遊べる」部分を包む。
@@ -47,13 +48,9 @@ Future<void> main() async {
   await _tolerate('課金', billing.init);
   // init() が失敗していても entitlementChanges 自体は購読できる
   // （実装側で先に作られる StreamController なので、購入が流れてこないだけ）。
-  billing.entitlementChanges.listen((productId) {
-    if (productId == ProductIds.noAdsLifetime) {
-      unawaited(entitlements.grantLifetime());
-    } else if (productId == ProductIds.noAdsMonthly) {
-      unawaited(entitlements.grantMonthly());
-    }
-  });
+  // 購読を始めてから、ストアとの起動時同期を走らせる — 月額の自動更新は
+  // アプリに届かないので、ここで取り直さないと 35 日で権利が切れる。
+  startEntitlementSync(billing: billing, entitlements: entitlements);
 
   // 広告の初期化はアプリの起動を待たせない (fire-and-forget)。先読みが
   // 間に合わなければ、その回はただ広告なしで進む -- ゲームプレイは

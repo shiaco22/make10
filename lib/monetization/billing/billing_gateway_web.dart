@@ -23,6 +23,9 @@ class WebBillingGateway implements BillingGateway {
   Future<void> restorePurchases() async {}
 
   @override
+  Future<void> syncPurchases() async {}
+
+  @override
   Stream<PurchaseUpdate> get purchaseUpdates => const Stream.empty();
 
   @override
